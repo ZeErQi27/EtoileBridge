@@ -1,4 +1,4 @@
-# EtoileBridge v1.2.26626
+# EtoileBridge
 
 EtoileBridge 是面向 ArcCreate 的谱面 / 曲包 / 搭档打包与编辑工具。
 EtoileBridge is a package conversion and editing toolkit for ArcCreate.
@@ -19,18 +19,6 @@ This project is not affiliated with lowiro or the official ArcCreate team.
 - Resource preview and image detail dialogs
 - Character result position preview
 - Cache cleanup
-
-## Downloads
-
-Android:
-
-- `android/EtoileBridge-Android-1.2.26626-release.apk`
-- `android/EtoileBridge-Android-1.2.26626-debug.apk` is provided only for debugging if retained in the release folder.
-
-Windows:
-
-- `windows/EtoileBridge-Windows-1.2.26626-x64.exe`
-- `windows/EtoileBridge-Windows-1.2.26626-win-unpacked.zip`
 
 ## Android Usage
 
