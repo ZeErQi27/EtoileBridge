@@ -2,8 +2,6 @@
 
 EtoileBridge is an ArcCreate package conversion and editing toolkit for Windows and Android.
 
-Current version: `v1.2.26629`
-
 This project is not affiliated with lowiro or the official ArcCreate team.
 
 ## Supported Workflows
