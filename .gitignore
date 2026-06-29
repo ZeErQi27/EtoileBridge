@@ -41,6 +41,7 @@ secrets/
 **/secrets/
 
 # Local chart/package/media fixtures
+docs/
 samples/
 **/samples/
 **/sample/
