@@ -88,6 +88,7 @@ class AudioProcessingService {
 
   final _analysisCache = <String, Future<AudioAnalysis>>{};
   final _toolCache = <String, Future<String?>>{};
+  bool debugForceHeaderProbeForTesting = false;
 
   Future<AudioAnalysis> analyze(String? path, {int peakCount = 160}) async {
     if (path == null || path.trim().isEmpty) {
@@ -191,6 +192,9 @@ class AudioProcessingService {
   }
 
   Future<_ProbeResult> _probe(String path) async {
+    if (debugForceHeaderProbeForTesting) {
+      return const _ProbeResult(toolMissing: true);
+    }
     final ffprobe = await _resolveTool('ffprobe');
     if (ffprobe == null) {
       return const _ProbeResult(toolMissing: true);
@@ -237,18 +241,13 @@ class AudioProcessingService {
   AudioCompatibilityReport _compatibility(String path, _ProbeResult probe) {
     final extension = _extension(path);
     if (probe.toolMissing) {
-      final looksOgg = _looksLikeOgg(path);
-      return AudioCompatibilityReport(
-        status: looksOgg
-            ? ArcCreateAudioCompatibility.unknown
-            : ArcCreateAudioCompatibility.unknown,
-        extension: extension,
-        reason:
-            'ffprobe is not available, so the real container and codec could not be checked.',
-        toolMissing: true,
-      );
+      return _compatibilityFromHeader(path, extension);
     }
     if (probe.error != null || !probe.hasAudio) {
+      final fallback = _compatibilityFromHeader(path, extension);
+      if (fallback.status != ArcCreateAudioCompatibility.damaged) {
+        return fallback;
+      }
       return AudioCompatibilityReport(
         status: ArcCreateAudioCompatibility.damaged,
         extension: extension,
@@ -288,6 +287,65 @@ class AudioProcessingService {
       codec: probe.codec,
       reason:
           'ArcCreate expects Ogg Vorbis. This file must be converted before export.',
+    );
+  }
+
+  AudioCompatibilityReport _compatibilityFromHeader(
+    String path,
+    String extension,
+  ) {
+    final header = _probeHeader(path);
+    if (header.error != null) {
+      return AudioCompatibilityReport(
+        status: ArcCreateAudioCompatibility.damaged,
+        extension: extension,
+        reason: header.error,
+      );
+    }
+    final container = header.container;
+    final codec = header.codec;
+    if (container == 'ogg' && codec == 'vorbis') {
+      return AudioCompatibilityReport(
+        status: ArcCreateAudioCompatibility.compatibleOgg,
+        extension: extension,
+        container: 'ogg',
+        codec: 'vorbis',
+        reason: 'Ogg Vorbis header detected; ArcCreate can import it directly.',
+      );
+    }
+    if (extension == 'ogg') {
+      if (container == null) {
+        return const AudioCompatibilityReport(
+          status: ArcCreateAudioCompatibility.damaged,
+          extension: 'ogg',
+          reason:
+              'The audio format could not be recognized from the file header.',
+        );
+      }
+      return AudioCompatibilityReport(
+        status: ArcCreateAudioCompatibility.fakeOgg,
+        extension: extension,
+        container: container,
+        codec: codec,
+        reason: container == 'ogg'
+            ? 'This .ogg file is not Vorbis; ArcCreate expects Ogg Vorbis.'
+            : 'The extension is .ogg, but the real container appears to be $container.',
+      );
+    }
+    if (container != null) {
+      return AudioCompatibilityReport(
+        status: ArcCreateAudioCompatibility.unsupportedFormat,
+        extension: extension,
+        container: container,
+        codec: codec,
+        reason:
+            'ArcCreate expects Ogg Vorbis. This file must be converted before export.',
+      );
+    }
+    return AudioCompatibilityReport(
+      status: ArcCreateAudioCompatibility.damaged,
+      extension: extension,
+      reason: 'The audio format could not be recognized from the file header.',
     );
   }
 
@@ -411,6 +469,14 @@ class _ProbeResult {
   final String? error;
 }
 
+class _HeaderProbeResult {
+  const _HeaderProbeResult({this.container, this.codec, this.error});
+
+  final String? container;
+  final String? codec;
+  final String? error;
+}
+
 extension _FirstOrNull<T> on Iterable<T> {
   T? get firstOrNull {
     final iterator = this.iterator;
@@ -429,15 +495,77 @@ Duration? _durationFromSeconds(String? value) {
 String _extension(String path) =>
     p.extension(path).replaceFirst('.', '').toLowerCase();
 
-bool _looksLikeOgg(String path) {
+_HeaderProbeResult _probeHeader(String path) {
   try {
     final file = File(path);
-    if (!file.existsSync()) return false;
-    final bytes = file.openSync()..setPositionSync(0);
-    final header = bytes.readSync(4);
-    bytes.closeSync();
-    return header.length == 4 && String.fromCharCodes(header) == 'OggS';
-  } catch (_) {
-    return false;
+    if (!file.existsSync()) {
+      return const _HeaderProbeResult(error: 'Audio file does not exist.');
+    }
+    final length = file.lengthSync();
+    if (length <= 0) {
+      return const _HeaderProbeResult(error: 'Audio file is empty.');
+    }
+    final handle = file.openSync();
+    try {
+      final bytes = handle.readSync(math.min(length, 65536));
+      if (_startsWithAscii(bytes, 'OggS')) {
+        if (_containsAscii(bytes, 'vorbis')) {
+          return const _HeaderProbeResult(container: 'ogg', codec: 'vorbis');
+        }
+        if (_containsAscii(bytes, 'OpusHead')) {
+          return const _HeaderProbeResult(container: 'ogg', codec: 'opus');
+        }
+        return const _HeaderProbeResult(container: 'ogg');
+      }
+      if (_startsWithAscii(bytes, 'ID3') || _looksLikeMp3Frame(bytes)) {
+        return const _HeaderProbeResult(container: 'mp3', codec: 'mp3');
+      }
+      if (_startsWithAscii(bytes, 'fLaC')) {
+        return const _HeaderProbeResult(container: 'flac', codec: 'flac');
+      }
+      if (_startsWithAscii(bytes, 'RIFF') &&
+          _startsWithAscii(bytes, 'WAVE', 8)) {
+        return const _HeaderProbeResult(container: 'wav', codec: 'pcm');
+      }
+      if (_startsWithAscii(bytes, 'ftyp', 4)) {
+        return const _HeaderProbeResult(
+          container: 'mov,mp4,m4a,3gp,3g2,mj2',
+          codec: 'aac',
+        );
+      }
+      return const _HeaderProbeResult();
+    } finally {
+      handle.closeSync();
+    }
+  } catch (error) {
+    return _HeaderProbeResult(error: error.toString());
   }
 }
+
+bool _startsWithAscii(Uint8List bytes, String value, [int offset = 0]) {
+  final units = ascii.encode(value);
+  if (offset < 0 || bytes.length < offset + units.length) return false;
+  for (var i = 0; i < units.length; i++) {
+    if (bytes[offset + i] != units[i]) return false;
+  }
+  return true;
+}
+
+bool _containsAscii(Uint8List bytes, String value) {
+  final units = ascii.encode(value);
+  if (units.isEmpty || bytes.length < units.length) return false;
+  for (var start = 0; start <= bytes.length - units.length; start++) {
+    var matched = true;
+    for (var i = 0; i < units.length; i++) {
+      if (bytes[start + i] != units[i]) {
+        matched = false;
+        break;
+      }
+    }
+    if (matched) return true;
+  }
+  return false;
+}
+
+bool _looksLikeMp3Frame(Uint8List bytes) =>
+    bytes.length >= 2 && bytes[0] == 0xFF && (bytes[1] & 0xE0) == 0xE0;
