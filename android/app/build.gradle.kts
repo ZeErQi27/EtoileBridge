@@ -1,97 +1,91 @@
+import java.io.File
 import java.util.Properties
 
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.plugin.compose")
+    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+    id("dev.flutter.flutter-gradle-plugin")
 }
 
-val androidSigningProperties = Properties()
-val androidSigningPropertiesFile = providers.environmentVariable("ETOILEBRIDGE_ANDROID_SIGNING_PROPERTIES")
-    .orNull
-    ?.let(::file)
-    ?: rootProject.projectDir.parentFile.resolve("secrets/EtoileBridge/android-signing.properties")
-if (androidSigningPropertiesFile.isFile) {
-    androidSigningPropertiesFile.inputStream().use(androidSigningProperties::load)
+val releaseSigningPropertiesFile =
+    file("E:/ArcpkgAPP/secrets/EtoileBridge/android-signing.properties")
+val releaseSigningProperties = Properties()
+val hasReleaseSigningProperties = releaseSigningPropertiesFile.isFile
+if (hasReleaseSigningProperties) {
+    releaseSigningPropertiesFile.inputStream().use {
+        releaseSigningProperties.load(it)
+    }
 }
 
-fun signingValue(envName: String, propertyName: String): String? =
-    providers.environmentVariable(envName).orNull
-        ?: androidSigningProperties.getProperty(propertyName)
+fun releaseSigningValue(key: String): String =
+    releaseSigningProperties.getProperty(key)?.trim()?.takeIf { it.isNotEmpty() }
+        ?: throw GradleException("Missing Android release signing property: $key")
 
-val releaseStoreFile = signingValue("ETOILEBRIDGE_ANDROID_KEYSTORE", "storeFile")
-val releaseStorePassword = signingValue("ETOILEBRIDGE_ANDROID_STORE_PASSWORD", "storePassword")
-val releaseKeyAlias = signingValue("ETOILEBRIDGE_ANDROID_KEY_ALIAS", "keyAlias")
-val releaseKeyPassword = signingValue("ETOILEBRIDGE_ANDROID_KEY_PASSWORD", "keyPassword")
-val hasReleaseSigning = listOf(
-    releaseStoreFile,
-    releaseStorePassword,
-    releaseKeyAlias,
-    releaseKeyPassword,
-).all { !it.isNullOrBlank() }
+fun releaseStoreFile(): File {
+    val configured = releaseSigningValue("storeFile")
+    val configuredFile = File(configured)
+    return if (configuredFile.isAbsolute) {
+        configuredFile
+    } else {
+        File(releaseSigningPropertiesFile.parentFile, configured)
+    }
+}
 
 android {
-    namespace = "com.zeerqi27.etoilebridge"
-    compileSdk = 35
+    namespace = "com.zeerqi27.etoile_bridge"
+    compileSdk = flutter.compileSdkVersion
+    ndkVersion = flutter.ndkVersion
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
 
     defaultConfig {
-        applicationId = "com.zeerqi27.etoilebridge"
-        minSdk = 26
-        targetSdk = 35
-        versionCode = 26626
-        versionName = "1.2.26626"
+        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
+        applicationId = "com.zeerqi27.etoile_bridge"
+        // You can update the following values to match your application needs.
+        // For more information, see: https://flutter.dev/to/review-gradle-config.
+        minSdk = flutter.minSdkVersion
+        targetSdk = flutter.targetSdkVersion
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
     }
 
     signingConfigs {
-        if (hasReleaseSigning) {
+        if (hasReleaseSigningProperties) {
             create("release") {
-                storeFile = file(releaseStoreFile!!)
-                storePassword = releaseStorePassword
-                keyAlias = releaseKeyAlias
-                keyPassword = releaseKeyPassword
-                enableV1Signing = true
-                enableV2Signing = true
-                enableV3Signing = true
-                enableV4Signing = true
+                storeFile = releaseStoreFile()
+                storePassword = releaseSigningValue("storePassword")
+                keyAlias = releaseSigningValue("keyAlias")
+                keyPassword = releaseSigningValue("keyPassword")
             }
         }
     }
 
     buildTypes {
         release {
-            if (hasReleaseSigning) {
-                signingConfig = signingConfigs.getByName("release")
+            signingConfig = if (hasReleaseSigningProperties) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
             }
         }
-    }
-
-    buildFeatures {
-        compose = true
     }
 }
 
 kotlin {
-    jvmToolchain(21)
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
+}
+
+flutter {
+    source = "../.."
 }
 
 dependencies {
     implementation(project(":converter-core"))
-
-    implementation(platform("androidx.compose:compose-bom:2024.12.01"))
-    implementation("androidx.activity:activity-compose:1.10.1")
-    implementation("androidx.compose.foundation:foundation")
-    implementation("androidx.compose.material:material-icons-extended")
-    implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.runtime:runtime")
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.documentfile:documentfile:1.0.1")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.7")
-
-    testImplementation(kotlin("test"))
-    testImplementation("junit:junit:4.13.2")
-
-    debugImplementation("androidx.compose.ui:ui-tooling")
-    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

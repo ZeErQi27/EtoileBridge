@@ -1,38 +1,27 @@
-# EtoileBridge v1.2.26626
+# EtoileBridge v1.2.26629
 
-## Downloads
+## Highlights
 
-- Windows: `EtoileBridge-Windows-1.2.26626-x64.exe`
-- Android: `EtoileBridge-Android-1.2.26626-release.apk`
+- Rebuilt the app with the new Flutter-based Windows / Android codebase.
+- Redesigned the Single Song, Pack Editor, and Character Editor pages with the new Fluent-style interface.
+- Restored ArcCreate appearance options and shared preprocessing options.
+- Added real Windows / Android single song, pack, and character package workflows.
+- Added ArcCreate Result screen preview using real Result texture layers.
+- Improved songlist / slst fallback handling, including question-mark chart ratings.
+- Improved ZIP filename encoding compatibility.
+- Added side selection based on slst and real side output handling.
+- Added pack chart difficulty exclusion.
+- Added GitHub update checking.
+- Added signed Android release build and updated Windows icon / branding.
 
-## What Is Included
+## Download Notes
 
-- Android app with Single Song, Pack Editor, and Character Editor workflows.
-- Windows Electron portable app with bundled runtime.
-- Kotlin/JVM converter worker packaged with the Windows app.
-- Resource previews, image detail dialogs, save dialog flow, cache cleanup, and settings.
-- UTF-8 preservation for metadata such as `◈Twiℓight Yūgen◈`.
-- Signed Android release APK.
+- Windows is distributed as a portable zip package.
+- Download `EtoileBridge-Windows-1.2.26629-x64-portable.zip`, extract it, then run `etoile_bridge.exe`.
+- No installer is required.
+- If Windows SmartScreen appears, this is expected for an unsigned portable build.
 
-## Related Projects
+## Known Notes
 
-- ArcCreate: https://github.com/Arcthesia/ArcCreate
-- EtoileResurrection: https://github.com/freeze-dolphin/EtoileResurrection
-
-EtoileBridge is a package conversion and editing toolkit for ArcCreate. This project is not affiliated with lowiro or the official ArcCreate team.
-
-## Known Issues
-
-- This is a preview release.
-- Complex or non-standard package structures may need manual correction.
-- Windows auto-update is not configured yet.
-- Windows package size is larger because a runtime is bundled.
-- Windows executable is currently unsigned and may trigger SmartScreen warnings.
-
-## Checksums
-
-See `checksums/SHA256SUMS.txt`.
-
-## License
-
-License: GPL-3.0
+- Windows icon cache may still show an old icon until Explorer / taskbar cache refreshes.
+- Use the portable zip instead of running files directly from inside the compressed archive.

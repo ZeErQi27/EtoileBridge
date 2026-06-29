@@ -1,8 +1,0 @@
-EtoileBridge converter-core includes adapted non-UI conversion logic from:
-
-EtoileResurrection
-Copyright (c) freeze-dolphin and contributors
-License: GNU General Public License v3.0
-
-The Android UI, SAF integration, and app shell are intentionally not included
-in this first-stage converter-core module.
