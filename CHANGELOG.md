@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.26810
+
+- Bug fixes.
+
 ## v1.2.26629
 
 - Rebuilt EtoileBridge with the Flutter-based Windows / Android codebase.
