@@ -87,6 +87,39 @@ if(PLUGIN_BUNDLED_LIBRARIES)
     COMPONENT Runtime)
 endif()
 
+get_filename_component(ETOILEBRIDGE_PROJECT_ROOT
+  "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+get_filename_component(ETOILEBRIDGE_WORKSPACE_ROOT
+  "${ETOILEBRIDGE_PROJECT_ROOT}/.." ABSOLUTE)
+
+# Bundle the JVM workers required by the Flutter shell. Local development can
+# still resolve the Gradle build directories directly, but the portable Windows
+# package must be self-contained for machines without the source tree.
+set(FLUTTER_WORKER_DIST
+  "${ETOILEBRIDGE_PROJECT_ROOT}/native/converter-worker/converter-worker/build/install/converter-worker")
+if(EXISTS "${FLUTTER_WORKER_DIST}/lib")
+  install(DIRECTORY "${FLUTTER_WORKER_DIST}/"
+    DESTINATION "${CMAKE_INSTALL_PREFIX}/native/flutter-converter-worker"
+    COMPONENT Runtime)
+endif()
+
+set(ELECTRON_RESOURCES_DIR "$ENV{ETOILEBRIDGE_ELECTRON_RESOURCES_DIR}"
+  CACHE PATH "Directory containing the Electron packaged worker and runtime")
+if(NOT ELECTRON_RESOURCES_DIR)
+  set(ELECTRON_RESOURCES_DIR
+    "${ETOILEBRIDGE_WORKSPACE_ROOT}/EtoileBridgeElectron/dist/win-unpacked/resources")
+endif()
+if(EXISTS "${ELECTRON_RESOURCES_DIR}/converter-worker/lib")
+  install(DIRECTORY "${ELECTRON_RESOURCES_DIR}/converter-worker/"
+    DESTINATION "${CMAKE_INSTALL_PREFIX}/native/converter-worker"
+    COMPONENT Runtime)
+endif()
+if(EXISTS "${ELECTRON_RESOURCES_DIR}/runtime/bin/java.exe")
+  install(DIRECTORY "${ELECTRON_RESOURCES_DIR}/runtime/"
+    DESTINATION "${CMAKE_INSTALL_PREFIX}/runtime"
+    COMPONENT Runtime)
+endif()
+
 # Copy the native assets provided by the build.dart from all packages.
 set(NATIVE_ASSETS_DIR "${PROJECT_BUILD_DIR}native_assets/windows/")
 install(DIRECTORY "${NATIVE_ASSETS_DIR}"

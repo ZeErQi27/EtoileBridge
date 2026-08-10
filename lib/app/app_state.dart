@@ -90,10 +90,26 @@ class AppState extends ChangeNotifier {
     final session = await _newSingleSessionPath();
     singleSong.startScanning(sourcePath, session);
     _safeNotifyListeners();
-    final result = await platform.workerBridge.scanSingle(
-      sourcePath: sourcePath,
-      sessionPath: session,
-    );
+    final WorkerActionResult<SingleSongScanResult> result;
+    try {
+      result = await platform.workerBridge.scanSingle(
+        sourcePath: sourcePath,
+        sessionPath: session,
+      );
+    } catch (error, stackTrace) {
+      if (_disposed) return;
+      final message = _platformExceptionMessage(error);
+      singleSong.fail(message, workerLogs: _exceptionLogs(error, stackTrace));
+      AppActionLogger.write(
+        phase: 'error',
+        page: currentPage.name,
+        id: 'single.scan.exception',
+        label: message,
+        before: debugSummary(),
+      );
+      _safeNotifyListeners();
+      return;
+    }
     if (_disposed) return;
     if (result.ok && result.data != null) {
       final inferredSide = await _inferSideFromSonglist(result.data!);
@@ -510,22 +526,38 @@ class AppState extends ChangeNotifier {
     final session = await _newPackSessionPath();
     packEditor.startScanning(sources, session);
     _safeNotifyListeners();
-    final result = switch (packEditor.mode) {
-      PackEditorMode.official => platform.workerBridge.scanPackOfficial(
-        sourcePath: sources.first,
-        sessionPath: session,
-      ),
-      PackEditorMode.bundle => platform.workerBridge.scanPackBundle(
-        sourcePaths: sources,
-        sessionPath: session,
-      ),
-      PackEditorMode.existing => platform.workerBridge.scanPackExisting(
-        basePath: sources.first,
-        addSourcePaths: sources.skip(1).toList(),
-        sessionPath: session,
-      ),
-    };
-    final scan = await result;
+    final WorkerActionResult<PackScanResult> scan;
+    try {
+      final result = switch (packEditor.mode) {
+        PackEditorMode.official => platform.workerBridge.scanPackOfficial(
+          sourcePath: sources.first,
+          sessionPath: session,
+        ),
+        PackEditorMode.bundle => platform.workerBridge.scanPackBundle(
+          sourcePaths: sources,
+          sessionPath: session,
+        ),
+        PackEditorMode.existing => platform.workerBridge.scanPackExisting(
+          basePath: sources.first,
+          addSourcePaths: sources.skip(1).toList(),
+          sessionPath: session,
+        ),
+      };
+      scan = await result;
+    } catch (error, stackTrace) {
+      if (_disposed) return;
+      final message = _platformExceptionMessage(error);
+      packEditor.fail(message, workerLogs: _exceptionLogs(error, stackTrace));
+      AppActionLogger.write(
+        phase: 'error',
+        page: currentPage.name,
+        id: 'pack.scan.exception',
+        label: message,
+        before: debugSummary(),
+      );
+      _safeNotifyListeners();
+      return;
+    }
     if (_disposed) return;
     if (scan.ok && scan.data != null) {
       packEditor.applyScan(
@@ -651,10 +683,29 @@ class AppState extends ChangeNotifier {
     final session = await _newCharacterSessionPath();
     characterEditor.startScanning(sourcePath);
     _safeNotifyListeners();
-    final result = await platform.workerBridge.scanCharacterImage(
-      sourcePath: sourcePath,
-      sessionPath: session,
-    );
+    final WorkerActionResult<CharacterScanResult> result;
+    try {
+      result = await platform.workerBridge.scanCharacterImage(
+        sourcePath: sourcePath,
+        sessionPath: session,
+      );
+    } catch (error, stackTrace) {
+      if (_disposed) return;
+      final message = _platformExceptionMessage(error);
+      characterEditor.fail(
+        message,
+        workerLogs: _exceptionLogs(error, stackTrace),
+      );
+      AppActionLogger.write(
+        phase: 'error',
+        page: currentPage.name,
+        id: 'character.scanImage.exception',
+        label: message,
+        before: debugSummary(),
+      );
+      _safeNotifyListeners();
+      return;
+    }
     if (_disposed) return;
     if (result.ok && result.data != null) {
       characterEditor.applyScan(
@@ -697,10 +748,29 @@ class AppState extends ChangeNotifier {
     final session = await _newCharacterSessionPath();
     characterEditor.startScanning(sourcePath);
     _safeNotifyListeners();
-    final result = await platform.workerBridge.scanCharacterPackage(
-      sourcePath: sourcePath,
-      sessionPath: session,
-    );
+    final WorkerActionResult<CharacterScanResult> result;
+    try {
+      result = await platform.workerBridge.scanCharacterPackage(
+        sourcePath: sourcePath,
+        sessionPath: session,
+      );
+    } catch (error, stackTrace) {
+      if (_disposed) return;
+      final message = _platformExceptionMessage(error);
+      characterEditor.fail(
+        message,
+        workerLogs: _exceptionLogs(error, stackTrace),
+      );
+      AppActionLogger.write(
+        phase: 'error',
+        page: currentPage.name,
+        id: 'character.scanPackage.exception',
+        label: message,
+        before: debugSummary(),
+      );
+      _safeNotifyListeners();
+      return;
+    }
     if (_disposed) return;
     if (result.ok && result.data != null) {
       characterEditor.applyScan(
@@ -1495,6 +1565,19 @@ String _formatBytes(int bytes) {
   }
   return '${(bytes / 1024 / 1024 / 1024).toStringAsFixed(1)} GB';
 }
+
+String _platformExceptionMessage(Object error) {
+  final text = error.toString();
+  if (text.startsWith('Bad state: ')) {
+    return text.substring('Bad state: '.length);
+  }
+  return text;
+}
+
+List<String> _exceptionLogs(Object error, StackTrace stackTrace) => [
+  'exception: ${error.runtimeType}: $error',
+  stackTrace.toString(),
+];
 
 class AppScope extends InheritedNotifier<AppState> {
   const AppScope({required AppState state, required super.child, super.key})

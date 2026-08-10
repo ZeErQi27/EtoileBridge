@@ -507,6 +507,7 @@ class WindowsJvmWorkerBridge implements PlatformWorkerBridge {
     final javaName = Platform.isWindows ? 'java.exe' : 'java';
     final javaCandidates = [
       _envJava('ETOILEBRIDGE_JAVA_HOME', javaName),
+      _portableChildPath('runtime/bin/$javaName'),
       _envJava('JAVA_HOME', javaName),
       _findOnPath(javaName),
       _siblingPath('EtoileBridgeElectron', 'build/runtime/bin/$javaName'),
@@ -527,6 +528,7 @@ class WindowsJvmWorkerBridge implements PlatformWorkerBridge {
 
     final libCandidates = [
       Platform.environment['ETOILEBRIDGE_FLUTTER_WORKER_LIB_DIR'],
+      _portableChildPath('native/flutter-converter-worker/lib'),
       _projectChildPath(
         'native/converter-worker/converter-worker/build/install/converter-worker/lib',
       ),
@@ -558,7 +560,10 @@ class WindowsJvmWorkerBridge implements PlatformWorkerBridge {
     return _ResolvedWorker(
       javaPath: javaPath,
       classpath: jars.join(Platform.isWindows ? ';' : ':'),
-      workingDirectory: _projectRootCandidate() ?? Directory.current.path,
+      workingDirectory:
+          _projectRootCandidate() ??
+          _portableRootCandidate() ??
+          Directory.current.path,
     );
   }
 
@@ -566,6 +571,7 @@ class WindowsJvmWorkerBridge implements PlatformWorkerBridge {
     final javaName = Platform.isWindows ? 'java.exe' : 'java';
     final javaCandidates = [
       _envJava('ETOILEBRIDGE_JAVA_HOME', javaName),
+      _portableChildPath('runtime/bin/$javaName'),
       _envJava('JAVA_HOME', javaName),
       _findOnPath(javaName),
       _siblingPath('EtoileBridgeElectron', 'build/runtime/bin/$javaName'),
@@ -586,6 +592,7 @@ class WindowsJvmWorkerBridge implements PlatformWorkerBridge {
 
     final libCandidates = [
       Platform.environment['ETOILEBRIDGE_WORKER_LIB_DIR'],
+      _portableChildPath('native/converter-worker/lib'),
       _siblingPath(
         'EtoileBridgeElectron',
         'converter-worker/build/install/converter-worker/lib',
@@ -619,7 +626,10 @@ class WindowsJvmWorkerBridge implements PlatformWorkerBridge {
     return _ResolvedWorker(
       javaPath: javaPath,
       classpath: jars.join(Platform.isWindows ? ';' : ':'),
-      workingDirectory: _projectRootCandidate() ?? Directory.current.path,
+      workingDirectory:
+          _projectRootCandidate() ??
+          _portableRootCandidate() ??
+          Directory.current.path,
     );
   }
 
@@ -701,6 +711,25 @@ class WindowsJvmWorkerBridge implements PlatformWorkerBridge {
     final root = _projectRootCandidate();
     if (root == null) return null;
     return p.normalize(p.joinAll([root, ...child.split('/')]));
+  }
+
+  String? _portableChildPath(String child) {
+    final root = _portableRootCandidate();
+    if (root == null) return null;
+    return p.normalize(p.joinAll([root, ...child.split('/')]));
+  }
+
+  String? _portableRootCandidate() {
+    if (!Platform.isWindows) return null;
+    final executable = Platform.resolvedExecutable;
+    if (executable.isEmpty) return null;
+    final dir = p.dirname(executable);
+    final exeName = p.basename(executable).toLowerCase();
+    if (exeName == 'etoile_bridge.exe' ||
+        File(p.join(dir, 'etoile_bridge.exe')).existsSync()) {
+      return dir;
+    }
+    return null;
   }
 
   String? _projectRootCandidate() {
