@@ -12,7 +12,6 @@ data class PreprocessStats(
     val deletedDesignantLines: Int = 0,
     val fixedZeroDurationArcTaps: Int = 0,
     val fixedReversedArcTimes: Int = 0,
-    val expandedArcResolutionArcs: Int = 0,
 )
 
 class Preprocessor {
@@ -30,8 +29,7 @@ class Preprocessor {
             logger.log(
                 "Preprocessed ${input.name}: designant=${result.stats.deletedDesignantLines}, " +
                     "zeroArcTap=${result.stats.fixedZeroDurationArcTaps}, " +
-                    "reversedArc=${result.stats.fixedReversedArcTimes}, " +
-                    "arcresolution=${result.stats.expandedArcResolutionArcs}"
+                    "reversedArc=${result.stats.fixedReversedArcTimes}"
             )
             PreprocessResult(output, result.stats, result.warnings)
         }
@@ -45,47 +43,32 @@ class Preprocessor {
 
         var stats = PreprocessStats()
         val warnings = mutableListOf<String>()
-        var currentArcResolution: String? = null
-        var timinggroupDepth = 0
 
         val out = mutableListOf<String>()
         for ((lineIndex, originalLine) in lines.withIndex()) {
-            var line = originalLine
-
-            if (options.enableDeleteDesignantLine && line.contains("designant", ignoreCase = true)) {
+            if (options.enableDeleteDesignantLine && originalLine.contains("designant", ignoreCase = true)) {
                 stats = stats.copy(deletedDesignantLines = stats.deletedDesignantLines + 1)
                 continue
             }
 
-            if (options.enableExpandArcResolution) {
-                val header = parseTiminggroupHeader(line)
-                if (header != null) {
-                    currentArcResolution = header.arcResolution
-                    timinggroupDepth = if (header.arcResolution != null) 1 else 0
-                    line = header.rewrittenLine
-                } else if (timinggroupDepth > 0) {
-                    timinggroupDepth += line.count { it == '{' }
-                    timinggroupDepth -= line.count { it == '}' }
-                    if (timinggroupDepth <= 0) currentArcResolution = null
-                }
+            if (!options.enableFixZeroDurationArcTap && !options.enableFixReversedArcTime) {
+                out += originalLine
+                continue
             }
 
             val mutation = rewriteArcs(
-                line = line,
-                arcResolution = currentArcResolution.takeIf { options.enableExpandArcResolution },
+                line = originalLine,
                 fixZeroDurationArcTap = options.enableFixZeroDurationArcTap,
                 fixReversedArcTime = options.enableFixReversedArcTime,
                 sourceName = sourceName,
                 lineNumber = lineIndex + 1,
             )
-            line = mutation.line
             stats = stats.copy(
                 fixedZeroDurationArcTaps = stats.fixedZeroDurationArcTaps + mutation.fixedZeroDurationArcTaps,
                 fixedReversedArcTimes = stats.fixedReversedArcTimes + mutation.fixedReversedArcTimes,
-                expandedArcResolutionArcs = stats.expandedArcResolutionArcs + mutation.expandedArcResolutionArcs,
             )
             warnings += mutation.warnings
-            out += line
+            out += mutation.line
         }
 
         val rebuilt = out.joinToString(newline) + if (endedWithNewline) newline else ""
@@ -98,28 +81,8 @@ class Preprocessor {
         else -> "\n"
     }
 
-    private fun parseTiminggroupHeader(line: String): TiminggroupHeader? {
-        val idx = line.indexOf("timinggroup(")
-        if (idx < 0) return null
-        val open = line.indexOf('(', idx)
-        val close = findMatchingParen(line, open) ?: return null
-        val brace = line.indexOf('{', close)
-        if (brace < 0) return null
-
-        val params = line.substring(open + 1, close)
-        val parts = params.split(',').map { it.trim() }.filter { it.isNotEmpty() }
-        val arcResolutionPart = parts.firstOrNull { it.startsWith("arcresolution=") }
-        val arcResolution = arcResolutionPart?.substringAfter("=")?.trim()
-        if (arcResolution == null) return TiminggroupHeader(null, line)
-
-        val remaining = parts.filterNot { it == arcResolutionPart }
-        val rewritten = line.substring(0, open + 1) + remaining.joinToString(",") + line.substring(close)
-        return TiminggroupHeader(arcResolution, rewritten)
-    }
-
     private fun rewriteArcs(
         line: String,
-        arcResolution: String?,
         fixZeroDurationArcTap: Boolean,
         fixReversedArcTime: Boolean,
         sourceName: String,
@@ -130,7 +93,6 @@ class Preprocessor {
         var cursor = 0
         var fixedZero = 0
         var fixedReversed = 0
-        var expanded = 0
 
         while (true) {
             val arcStart = line.indexOf("arc(", cursor)
@@ -168,22 +130,23 @@ class Preprocessor {
                 } else if (fixReversedArcTime && start > end) {
                     params[0] = end.toString()
                     params[1] = start.toString()
+                    val xStart = params[2]
+                    params[2] = params[3]
+                    params[3] = xStart
+                    val yStart = params[5]
+                    params[5] = params[6]
+                    params[6] = yStart
                     fixedReversed += 1
                 }
             } else {
                 warnings += "$sourceName:$lineNumber arc timing is not numeric; kept timing unchanged."
             }
 
-            if (arcResolution != null && params.size == 10) {
-                params += arcResolution
-                expanded += 1
-            }
-
             builder.append(params.joinToString(","))
             cursor = close
         }
 
-        return ArcLineMutation(builder.toString(), fixedZero, fixedReversed, expanded, warnings)
+        return ArcLineMutation(builder.toString(), fixedZero, fixedReversed, warnings)
     }
 
     private fun splitCommaSeparated(value: String): List<String> {
@@ -236,15 +199,9 @@ data class PreprocessedContent(
     val warnings: List<String>,
 )
 
-private data class TiminggroupHeader(
-    val arcResolution: String?,
-    val rewrittenLine: String,
-)
-
 private data class ArcLineMutation(
     val line: String,
     val fixedZeroDurationArcTaps: Int,
     val fixedReversedArcTimes: Int,
-    val expandedArcResolutionArcs: Int,
     val warnings: List<String>,
 )

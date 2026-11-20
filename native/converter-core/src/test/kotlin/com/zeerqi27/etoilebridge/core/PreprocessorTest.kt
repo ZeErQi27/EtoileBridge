@@ -32,23 +32,19 @@ class PreprocessorTest {
             "arc(2000,1000,0.00,1.00,s,0.00,1.00,0,none,false);",
             options,
         )
-        assertContains(result.content, "arc(1000,2000")
+        assertContains(result.content, "arc(1000,2000,1.00,0.00,s,1.00,0.00")
         assertEquals(1, result.stats.fixedReversedArcTimes)
     }
 
     @Test
-    fun expandsArcResolutionWithinTiminggroup() {
-        val result = Preprocessor().preprocess(
-            """
+    fun doesNotRewriteGroupOrPerArcResolution() {
+        val content = """
             timinggroup(arcresolution=3.00){
-            arc(0,1000,0.00,1.00,s,0.00,1.00,0,none,false);
+            arc(0,1000,0.00,1.00,s,0.00,1.00,0,none,false,2.00);
             };
             arc(0,1000,0.00,1.00,s,0.00,1.00,0,none,false);
-            """.trimIndent(),
-            options,
-        )
-        assertContains(result.content, "timinggroup(){")
-        assertContains(result.content, "arc(0,1000,0.00,1.00,s,0.00,1.00,0,none,false,3.00);")
-        assertEquals(1, result.stats.expandedArcResolutionArcs)
+            """.trimIndent()
+        val result = Preprocessor().preprocess(content, options)
+        assertEquals(content, result.content)
     }
 }

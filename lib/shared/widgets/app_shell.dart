@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 
 import '../../app/app_spacing.dart';
 import '../../app/app_state.dart';
@@ -271,42 +272,76 @@ class _PrettySidebar extends StatelessWidget {
   }
 }
 
-class _SidebarDestinationStack extends StatelessWidget {
+class _SidebarDestinationStack extends StatefulWidget {
   const _SidebarDestinationStack({required this.currentPage});
 
   final AppPageId currentPage;
 
+  @override
+  State<_SidebarDestinationStack> createState() =>
+      _SidebarDestinationStackState();
+}
+
+class _SidebarDestinationStackState extends State<_SidebarDestinationStack>
+    with SingleTickerProviderStateMixin {
   static const double _itemHeight = 60;
   static const double _pillHeight = 52;
+  static final _spring = SpringDescription.withDampingRatio(
+    mass: 1,
+    stiffness: 420,
+    ratio: 0.83,
+  );
+
+  late final AnimationController _offset = AnimationController.unbounded(
+    vsync: this,
+    value: _target,
+  );
+
+  double get _target =>
+      AppPageId.values.indexOf(widget.currentPage) * _itemHeight;
+
+  @override
+  void didUpdateWidget(covariant _SidebarDestinationStack oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.currentPage == oldWidget.currentPage) return;
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _offset.value = _target;
+    } else {
+      _offset.animateWith(
+        SpringSimulation(_spring, _offset.value, _target, _offset.velocity),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _offset.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final index = AppPageId.values
-        .indexOf(currentPage)
-        .clamp(0, AppPageId.values.length - 1);
     return SizedBox(
       height: AppPageId.values.length * _itemHeight,
       child: Stack(
         children: [
-          AnimatedPositioned(
-            duration: const Duration(milliseconds: 310),
-            curve: Curves.easeOutBack,
+          Positioned(
             left: 0,
             right: 0,
-            top: index * _itemHeight,
+            top: 0,
             height: _pillHeight,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: scheme.secondaryContainer,
-                borderRadius: BorderRadius.circular(18),
-                boxShadow: [
-                  BoxShadow(
-                    color: scheme.primary.withValues(alpha: 0.08),
-                    blurRadius: 18,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
+            child: AnimatedBuilder(
+              animation: _offset,
+              builder: (context, child) => Transform.translate(
+                offset: Offset(0, _offset.value),
+                child: child,
+              ),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: scheme.secondaryContainer,
+                  borderRadius: BorderRadius.circular(18),
+                ),
               ),
             ),
           ),
@@ -318,7 +353,7 @@ class _SidebarDestinationStack extends StatelessWidget {
               height: _pillHeight,
               child: _SidebarDestination(
                 page: AppPageId.values[i],
-                selected: currentPage == AppPageId.values[i],
+                selected: widget.currentPage == AppPageId.values[i],
               ),
             ),
         ],

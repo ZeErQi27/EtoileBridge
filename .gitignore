@@ -71,3 +71,6 @@ release/
 *.apk
 *.aab
 *.exe
+# .NET adapter build outputs
+/native/etoile-lite-adapter/bin/
+/native/etoile-lite-adapter/obj/

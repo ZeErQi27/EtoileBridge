@@ -1,22 +1,25 @@
 package com.zeerqi27.etoilebridge.core
 
 import java.io.File
+import java.util.UUID
 
 class PackBundleConverter(
     private val scanner: PackBundleScanner = PackBundleScanner(),
     private val merger: ArcpkgBundleMerger = ArcpkgBundleMerger(),
+    private val chartConverter: ChartConverter? = null,
 ) {
     fun convertOfficialPack(input: BundleInput): BundleConvertResult {
         val warnings = mutableListOf<String>()
         val logs = mutableListOf<String>()
+        var scratch: File? = null
         return try {
             val scan = scanner.scanOfficialPack(input.workspaceDir)
             warnings += scan.warnings
             logs += scan.logs
-            val tempRoot = input.workspaceDir.resolve("etoilebridge_bundle_temp").apply {
-                deleteRecursively()
-                mkdirs()
-            }
+            // Keep intermediate song workspaces out of subsequent input scans.
+            val tempRoot = input.workspaceDir.absoluteFile.parentFile.resolve("bundle-${UUID.randomUUID()}")
+            check(tempRoot.mkdir()) { "Could not create the temporary bundle workspace." }
+            scratch = tempRoot
             val selected = scan.entries.filter { input.options.isEntryEnabled(it) }
             if (selected.isEmpty()) {
                 return BundleConvertResult.Failed(
@@ -54,6 +57,7 @@ class PackBundleConverter(
                         cleanWorkspaceOnSuccess = true,
                         keepWorkspaceOnFailure = true,
                     ),
+                    chartConverter = chartConverter,
                 )
                 when (result) {
                     is ConvertResult.Success -> {
@@ -108,6 +112,8 @@ class PackBundleConverter(
                 logs = logs,
                 workspaceDir = input.workspaceDir,
             )
+        } finally {
+            scratch?.deleteRecursively()
         }
     }
 

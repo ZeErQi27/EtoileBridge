@@ -262,9 +262,7 @@ class WindowsJvmWorkerBridge implements PlatformWorkerBridge {
         '--output',
         tempOutput,
         '--request-json',
-        jsonEncode(
-          _electronWorkerCompatibleRequest(request.toWorkerRequestJson()),
-        ),
+        jsonEncode(request.toWorkerRequestJson()),
       ],
       PackEditorMode.existing => [
         'save-existing-pack',
@@ -293,7 +291,9 @@ class WindowsJvmWorkerBridge implements PlatformWorkerBridge {
         ),
       ],
     };
-    final result = await _runWorker(args);
+    final result = request.scan.mode == PackEditorMode.official
+        ? await _runFlutterWorker(args)
+        : await _runWorker(args);
     final parsed = WorkerActionResult.fromEnvelope(
       result.envelope,
       PackSaveResult.fromJson,
@@ -444,7 +444,35 @@ class WindowsJvmWorkerBridge implements PlatformWorkerBridge {
 
   Future<_RawWorkerResult> _runFlutterWorker(List<String> args) async {
     final resolved = await _resolveFlutterWorker();
-    return _runResolvedWorker(resolved, _flutterMainClass, args);
+    final needsLite = const {
+      'convert-single',
+      'save-official-pack',
+    }.contains(args.first);
+    final lite = needsLite ? _resolveLiteAdapter() : null;
+    if (needsLite && lite == null) {
+      return _RawWorkerResult.error(
+        'Etoile.Lite is missing. Re-extract the complete Windows portable package.',
+      );
+    }
+    return _runResolvedWorker(resolved, _flutterMainClass, [
+      ...args,
+      if (lite != null) ...['--lite', lite],
+    ]);
+  }
+
+  String? _resolveLiteAdapter() {
+    const name = 'EtoileBridge.Lite.exe';
+    final rid = Platform.version.contains('windows_arm64')
+        ? 'win-arm64'
+        : 'win-x64';
+    final candidates = [
+      _portableChildPath('native/etoile-lite/$name'),
+      _projectChildPath('build/etoile-lite/$rid/$name'),
+    ];
+    for (final path in candidates.whereType<String>()) {
+      if (File(path).existsSync()) return path;
+    }
+    return null;
   }
 
   Future<_RawWorkerResult> _runResolvedWorker(
@@ -461,8 +489,9 @@ class WindowsJvmWorkerBridge implements PlatformWorkerBridge {
       mainClass,
       ...args,
     ]);
+    Process? workerProcess;
     try {
-      final process = await Process.start(
+      final process = workerProcess = await Process.start(
         resolved.javaPath,
         materialized.args,
         workingDirectory: resolved.workingDirectory,
@@ -476,15 +505,12 @@ class WindowsJvmWorkerBridge implements PlatformWorkerBridge {
       );
       final stdout = await stdoutFuture;
       final stderr = await stderrFuture;
-      if (exitCode != 0) {
-        return _RawWorkerResult.error(
-          'converter worker failed with exit code $exitCode',
-          logs: [stderr.trim()].where((line) => line.isNotEmpty).toList(),
-        );
-      }
       final payload = _jsonPayload(stdout);
       try {
         final envelope = jsonDecode(payload) as Map<String, Object?>;
+        if (exitCode != 0 && envelope['ok'] != false) {
+          throw FormatException('unexpected worker exit code $exitCode');
+        }
         final logs = [
           ..._stringList(envelope['logs']),
           if (stderr.trim().isNotEmpty) stderr.trim(),
@@ -492,11 +518,14 @@ class WindowsJvmWorkerBridge implements PlatformWorkerBridge {
         return _RawWorkerResult({...envelope, 'logs': logs});
       } catch (error) {
         return _RawWorkerResult.error(
-          'converter worker returned invalid JSON: $error',
+          exitCode == 0
+              ? 'converter worker returned invalid JSON: $error'
+              : 'converter worker failed with exit code $exitCode',
           logs: [stdout, stderr].where((line) => line.isNotEmpty).toList(),
         );
       }
     } on TimeoutException {
+      workerProcess?.kill();
       return _RawWorkerResult.error('converter worker timed out');
     } finally {
       await materialized.cleanup();

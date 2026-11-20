@@ -191,48 +191,38 @@ class PrettyButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final foreground = primary ? scheme.onPrimary : scheme.primary;
-    final background = primary
-        ? scheme.primary
-        : scheme.secondaryContainer.withValues(alpha: 0.72);
+    final background = primary ? scheme.primary : scheme.secondaryContainer;
     return AnimatedOpacity(
       duration: const Duration(milliseconds: 160),
       opacity: onPressed == null ? 0.46 : 1,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(PrettyRadii.pill),
-          gradient: primary
-              ? LinearGradient(colors: [scheme.primary, scheme.tertiary])
-              : null,
-        ),
-        child: Material(
-          color: primary ? Colors.transparent : background,
-          borderRadius: BorderRadius.circular(PrettyRadii.pill),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: onPressed,
-            child: Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: compact ? 16 : 22,
-                vertical: compact ? 11 : 14,
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(icon, color: foreground, size: compact ? 18 : 20),
-                  const SizedBox(width: 9),
-                  Flexible(
-                    child: Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        color: foreground,
-                        fontWeight: FontWeight.w800,
-                      ),
+      child: Material(
+        color: background,
+        borderRadius: BorderRadius.circular(PrettyRadii.pill),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onPressed,
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: compact ? 16 : 22,
+              vertical: compact ? 11 : 14,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, color: foreground, size: compact ? 18 : 20),
+                const SizedBox(width: 9),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: foreground,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),

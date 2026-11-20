@@ -92,6 +92,38 @@ get_filename_component(ETOILEBRIDGE_PROJECT_ROOT
 get_filename_component(ETOILEBRIDGE_WORKSPACE_ROOT
   "${ETOILEBRIDGE_PROJECT_ROOT}/.." ABSOLUTE)
 
+# Compile the pinned upstream parser into a self-contained Windows companion.
+set(ETOILE_LITE_DOTNET "$ENV{ETOILEBRIDGE_DOTNET}" CACHE FILEPATH
+  ".NET 10 SDK dotnet executable")
+if(NOT ETOILE_LITE_DOTNET)
+  find_program(ETOILE_LITE_DEFAULT_DOTNET NAMES dotnet)
+  if(NOT ETOILE_LITE_DEFAULT_DOTNET)
+    message(FATAL_ERROR "Install .NET 10 SDK or set ETOILEBRIDGE_DOTNET.")
+  endif()
+  set(ETOILE_LITE_DOTNET "${ETOILE_LITE_DEFAULT_DOTNET}")
+endif()
+if(CMAKE_VS_PLATFORM_NAME STREQUAL "ARM64")
+  set(ETOILE_LITE_RID "win-arm64")
+else()
+  set(ETOILE_LITE_RID "win-x64")
+endif()
+set(ETOILE_LITE_SOURCE "${ETOILEBRIDGE_PROJECT_ROOT}/native/etoile-lite-adapter")
+set(ETOILE_LITE_OUTPUT "${ETOILEBRIDGE_PROJECT_ROOT}/build/etoile-lite/${ETOILE_LITE_RID}")
+set(ETOILE_LITE_EXE "${ETOILE_LITE_OUTPUT}/EtoileBridge.Lite.exe")
+add_custom_command(
+  OUTPUT "${ETOILE_LITE_EXE}"
+  COMMAND "${ETOILE_LITE_DOTNET}" publish "${ETOILE_LITE_SOURCE}/EtoileBridge.Lite.csproj"
+    -c Release -r "${ETOILE_LITE_RID}" --self-contained true
+    -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+    -p:DebugType=None --artifacts-path "${ETOILEBRIDGE_PROJECT_ROOT}/build/etoile-lite-obj"
+    -o "${ETOILE_LITE_OUTPUT}"
+  DEPENDS "${ETOILE_LITE_SOURCE}/EtoileBridge.Lite.csproj" "${ETOILE_LITE_SOURCE}/Program.cs"
+  VERBATIM)
+add_custom_target(etoile_lite_adapter DEPENDS "${ETOILE_LITE_EXE}")
+add_dependencies(${BINARY_NAME} etoile_lite_adapter)
+install(FILES "${ETOILE_LITE_EXE}" "${ETOILE_LITE_SOURCE}/NOTICE.md"
+  DESTINATION "${CMAKE_INSTALL_PREFIX}/native/etoile-lite" COMPONENT Runtime)
+
 # Bundle the JVM workers required by the Flutter shell. Local development can
 # still resolve the Gradle build directories directly, but the portable Windows
 # package must be self-contained for machines without the source tree.

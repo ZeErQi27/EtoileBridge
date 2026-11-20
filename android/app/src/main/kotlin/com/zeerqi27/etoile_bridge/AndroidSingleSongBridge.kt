@@ -333,9 +333,6 @@ class AndroidSingleSongBridge(private val context: Context) {
             ),
             options = ConvertOptions(
                 enableDeleteDesignantLine = preprocess.boolArg("deleteDesignantLine") != false,
-                enableFixZeroDurationArcTap = preprocess.boolArg("fixZeroDurationArcTap") != false,
-                enableFixReversedArcTime = preprocess.boolArg("fixReversedArcTime") != false,
-                enableExpandArcResolution = preprocess.boolArg("expandArcResolution") != false,
                 keepWorkspaceOnFailure = true,
                 cleanWorkspaceOnSuccess = true,
             ),

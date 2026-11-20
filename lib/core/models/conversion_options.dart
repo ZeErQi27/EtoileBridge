@@ -44,45 +44,13 @@ class ArcCreateAppearanceOptions {
 }
 
 class PreprocessOptions {
-  const PreprocessOptions({
-    this.deleteDesignantLine = true,
-    this.fixZeroDurationArcTap = true,
-    this.fixReversedArcTime = true,
-    this.expandArcResolution = true,
-  });
+  const PreprocessOptions({this.deleteDesignantLine = true});
 
-  const PreprocessOptions.disabled()
-    : deleteDesignantLine = false,
-      fixZeroDurationArcTap = false,
-      fixReversedArcTime = false,
-      expandArcResolution = false;
+  const PreprocessOptions.disabled() : deleteDesignantLine = false;
 
   final bool deleteDesignantLine;
-  final bool fixZeroDurationArcTap;
-  final bool fixReversedArcTime;
-  final bool expandArcResolution;
 
-  Map<String, Object?> toJson() => {
-    'deleteDesignantLine': deleteDesignantLine,
-    'fixZeroDurationArcTap': fixZeroDurationArcTap,
-    'fixReversedArcTime': fixReversedArcTime,
-    'expandArcResolution': expandArcResolution,
-  };
-
-  PreprocessOptions copyWith({
-    bool? deleteDesignantLine,
-    bool? fixZeroDurationArcTap,
-    bool? fixReversedArcTime,
-    bool? expandArcResolution,
-  }) {
-    return PreprocessOptions(
-      deleteDesignantLine: deleteDesignantLine ?? this.deleteDesignantLine,
-      fixZeroDurationArcTap:
-          fixZeroDurationArcTap ?? this.fixZeroDurationArcTap,
-      fixReversedArcTime: fixReversedArcTime ?? this.fixReversedArcTime,
-      expandArcResolution: expandArcResolution ?? this.expandArcResolution,
-    );
-  }
+  Map<String, Object?> toJson() => {'deleteDesignantLine': deleteDesignantLine};
 }
 
 class ConversionOptionChoice {

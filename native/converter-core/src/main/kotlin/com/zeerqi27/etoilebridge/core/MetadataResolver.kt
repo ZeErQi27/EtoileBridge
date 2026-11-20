@@ -204,8 +204,7 @@ class MetadataResolver {
         val manual = manualMetadata?.difficulties?.firstOrNull { it.ratingClass == ratingClass }
         val rating = manual?.rating ?: source?.rating
         val ratingPlus = manual?.ratingPlus ?: source?.ratingPlus ?: false
-        val chartConstant = manual?.chartConstant
-            ?: source?.chartConstant
+        val chartConstant = source?.chartConstant
             ?: source?.ratingReal
             ?: source?.chartConstantSnake
             ?: source?.ratingRealSnake
@@ -217,7 +216,7 @@ class MetadataResolver {
             rating = rating,
             ratingPlus = ratingPlus,
             difficulty = manual?.difficulty ?: DifficultyMapper.displayName(ratingClass, rating, ratingPlus),
-            chartConstant = if (rating == null || rating <= 0) 0f else chartConstant,
+            chartConstant = manual?.chartConstant ?: if (rating == null || rating <= 0) 0f else chartConstant,
             jacketOverride = source?.jacketOverride ?: false,
             audioOverride = source?.audioOverride ?: false,
             bg = manual?.bg ?: source?.bg,

@@ -17,7 +17,7 @@ import java.io.FileOutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
-class PackEngine {
+class PackEngine(private val chartConverter: ChartConverter? = null) {
     fun pack(
         resolvedSong: ResolvedSong,
         outputFile: File,
@@ -26,6 +26,18 @@ class PackEngine {
         packageOptions: PackageOptions = PackageOptions(),
         appearanceOptions: AppearanceOptions = AppearanceOptions(),
     ): File {
+        val liteCharts = chartConverter?.let { converter ->
+            resolvedSong.difficulties.associate { diff ->
+                val ratingClass = diff.metadata.ratingClass
+                val converted = try {
+                    converter.convert(diff.affFile)
+                } catch (error: Exception) {
+                    throw IllegalStateException("Error converting ${diff.affFile.name}: ${error.message}", error)
+                }
+                logger.log("Converted ${diff.affFile.name} with Etoile.Lite")
+                ratingClass to converted
+            }
+        }
         outputFile.parentFile?.mkdirs()
         FileOutputStream(outputFile).use { fileOut ->
             ZipOutputStream(fileOut).use { zip ->
@@ -41,7 +53,8 @@ class PackEngine {
                         type = ArcpkgEntryType.LEVEL,
                     )
                 )
-                val convertedCharts = convertCharts(resolvedSong, warnings, logger)
+                val convertedCharts = liteCharts?.map { (ratingClass, chart) -> ratingClass to chart.aff }
+                    ?: convertCharts(resolvedSong, warnings, logger)
                 val project = ProjectInformation(
                     lastOpenedChartPath = lastOpenedChartPath(resolvedSong),
                     charts = buildChartEntries(resolvedSong, warnings, appearanceOptions),
@@ -71,7 +84,10 @@ class PackEngine {
                     }
                 }
 
-                exportScenecontrols(resolvedSong, warnings, logger).forEach { (ratingClass, content) ->
+                val scenecontrols = liteCharts?.mapNotNull { (ratingClass, chart) ->
+                    chart.scenecontrolJson?.takeIf { it.isNotBlank() }?.let { ratingClass to it }
+                } ?: exportScenecontrols(resolvedSong, warnings, logger)
+                scenecontrols.forEach { (ratingClass, content) ->
                     zip.putNextEntry(ZipEntry("$directory/$ratingClass.sc.json"))
                     zip.write(content.toByteArray(Charsets.UTF_8))
                     zip.closeEntry()

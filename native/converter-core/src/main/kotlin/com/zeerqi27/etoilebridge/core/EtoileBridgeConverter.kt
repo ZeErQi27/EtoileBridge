@@ -7,6 +7,7 @@ object EtoileBridgeConverter {
         input: ConvertInput,
         options: ConvertOptions = ConvertOptions(),
         logger: ConvertLogger = ConvertLogger.NONE,
+        chartConverter: ChartConverter? = null,
     ): ConvertResult {
         val log = LogCollector(logger)
         val warnings = mutableListOf<String>()
@@ -84,7 +85,11 @@ object EtoileBridgeConverter {
             log.log("Resolved metadata for ${metadata.songId}")
 
             val processedDir = TempWorkspace.processedAffDir(input.workspaceDir, metadata.songId)
-            val processed = Preprocessor().preprocessAffFiles(affFiles, processedDir, options, log)
+            val preprocessorOptions = if (chartConverter == null) options else options.copy(
+                enableFixZeroDurationArcTap = false,
+                enableFixReversedArcTime = false,
+            )
+            val processed = Preprocessor().preprocessAffFiles(affFiles, processedDir, preprocessorOptions, log)
             processed.values.flatMapTo(warnings) { it.warnings }
             val processedAffFiles = processed.mapValues { it.value.outputFile }
 
@@ -98,7 +103,7 @@ object EtoileBridgeConverter {
             )
 
             val output = fixedOutputFile(input.outputFile, metadata.songId)
-            PackEngine().pack(resolvedSong, output, warnings, log, input.packageOptions, input.appearanceOptions)
+            PackEngine(chartConverter).pack(resolvedSong, output, warnings, log, input.packageOptions, input.appearanceOptions)
 
             if (options.cleanWorkspaceOnSuccess) {
                 TempWorkspace.cleanProcessedAff(input.workspaceDir)

@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.261120
+
+- Bug fixes.
+
 ## v1.2.26810
 
 - Bug fixes.

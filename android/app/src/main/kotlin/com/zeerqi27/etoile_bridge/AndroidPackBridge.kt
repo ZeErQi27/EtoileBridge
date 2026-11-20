@@ -626,9 +626,6 @@ private fun Map<*, *>.toBundleOptions(output: File): BundleOptions =
         includeOnlyConvertible = true,
         convertOptions = ConvertOptions(
             enableDeleteDesignantLine = mapArg("preprocess").boolArg("deleteDesignantLine") != false,
-            enableFixZeroDurationArcTap = mapArg("preprocess").boolArg("fixZeroDurationArcTap") != false,
-            enableFixReversedArcTime = mapArg("preprocess").boolArg("fixReversedArcTime") != false,
-            enableExpandArcResolution = mapArg("preprocess").boolArg("expandArcResolution") != false,
             keepWorkspaceOnFailure = true,
             cleanWorkspaceOnSuccess = true,
         ),

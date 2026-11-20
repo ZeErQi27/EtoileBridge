@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:etoile_bridge/app/app_state.dart';
@@ -295,48 +296,70 @@ void main() {
     );
   }, skip: skipReason);
 
-  test('local Windows worker applies single preprocess toggles', () async {
-    final sample = File(_caiSeDeHeiZip);
-    expect(sample.existsSync(), isTrue, reason: sample.path);
+  test(
+    'Etoile.Lite preserves native arc multipliers and fixes timing',
+    () async {
+      final sample = File(_caiSeDeHeiZip);
+      expect(sample.existsSync(), isTrue, reason: sample.path);
 
-    final state = AppState.bootstrap();
-    await state.scanSingleSong(sample.path);
-    final scan = state.singleSong.scan;
-    final edit = state.singleSong.edit;
-    expect(scan, isNotNull);
-    expect(edit, isNotNull);
-    final affPath = edit!.charts.single.affPath;
-    expect(affPath, isNotNull);
-    _injectPreprocessFixtures(File(affPath!));
+      final state = AppState.bootstrap();
+      await state.scanSingleSong(sample.path);
+      final scan = state.singleSong.scan;
+      final edit = state.singleSong.edit;
+      expect(scan, isNotNull);
+      expect(edit, isNotNull);
+      final affPath = edit!.charts.single.affPath;
+      expect(affPath, isNotNull);
+      _injectPreprocessFixtures(File(affPath!));
 
-    final outDir = await _smokeOutputDir('single-preprocess');
-    final disabledPath = p.join(outDir.path, 'preprocess-disabled.arcpkg');
-    final disabledSave = await state.platform.workerBridge.saveSingle(
-      SingleSongSaveRequest(
-        scan: scan!,
-        edit: edit,
-        outputPath: disabledPath,
-        preprocess: const PreprocessOptions(
-          deleteDesignantLine: false,
-          fixZeroDurationArcTap: false,
-          fixReversedArcTime: false,
-          expandArcResolution: false,
+      final outDir = await _smokeOutputDir('single-preprocess');
+      final disabledPath = p.join(outDir.path, 'preprocess-disabled.arcpkg');
+      final disabledSave = await state.platform.workerBridge.saveSingle(
+        SingleSongSaveRequest(
+          scan: scan!,
+          edit: edit,
+          outputPath: disabledPath,
+          preprocess: const PreprocessOptions.disabled(),
         ),
-      ),
-    );
-    expect(disabledSave.ok, isFalse, reason: disabledSave.logs.join('\n'));
-    expect(disabledSave.error ?? '', isNotEmpty);
+      );
+      expect(disabledSave.ok, isFalse, reason: disabledSave.logs.join('\n'));
+      expect(disabledSave.error ?? '', isNotEmpty);
 
-    final enabledPath = p.join(outDir.path, 'preprocess-enabled.arcpkg');
-    final enabledSave = await state.platform.workerBridge.saveSingle(
-      SingleSongSaveRequest(scan: scan, edit: edit, outputPath: enabledPath),
-    );
-    expect(enabledSave.ok, isTrue, reason: enabledSave.error);
-    expect(File(enabledPath).existsSync(), isTrue);
-    expect(File(enabledPath).lengthSync(), greaterThan(0));
-    // ignore: avoid_print
-    print('single preprocess smoke output: $enabledPath');
-  }, skip: skipReason);
+      final enabledPath = p.join(outDir.path, 'preprocess-enabled.arcpkg');
+      final enabledSave = await state.platform.workerBridge.saveSingle(
+        SingleSongSaveRequest(scan: scan, edit: edit, outputPath: enabledPath),
+      );
+      expect(
+        enabledSave.ok,
+        isTrue,
+        reason: [enabledSave.error, ...enabledSave.warnings].join('\n'),
+      );
+      expect(File(enabledPath).existsSync(), isTrue);
+      expect(File(enabledPath).lengthSync(), greaterThan(0));
+      final aff = await _readPackageText(File(enabledPath), '*/?.aff');
+      expect(aff, contains('arc(1000,1001'));
+      expect(aff, contains('[arctap(1000)]'));
+      expect(aff, contains('arc(1800,2400,1.00,0.00,s,1.00,0.00'));
+      expect(
+        aff,
+        contains('arc(3000,3600,0.00,1.00,s,0.00,1.00,0,none,true,2.00)'),
+      );
+      expect(
+        aff,
+        contains('arc(3700,4100,0.00,1.00,s,0.00,1.00,0,none,true,3.50)'),
+      );
+      expect(aff, isNot(contains('arcresolution=')));
+      final scenecontrol = await _readPackageText(
+        File(enabledPath),
+        '*/?.sc.json',
+      );
+      expect(jsonDecode(scenecontrol), anyOf(isA<Map>(), isA<List>()));
+      expect(enabledSave.logs.join('\n'), contains('with Etoile.Lite'));
+      // ignore: avoid_print
+      print('single preprocess smoke output: $enabledPath');
+    },
+    skip: skipReason,
+  );
 
   test('local Windows worker scans and saves an arcpkg bundle pack', () async {
     final sample = File(_packBundleSample);
@@ -367,64 +390,62 @@ void main() {
     print('pack smoke output: $outputPath');
   }, skip: skipReason);
 
-  test('local Windows worker applies pack preprocess toggles', () async {
-    final sample = File(_officialPackSample);
-    expect(sample.existsSync(), isTrue, reason: sample.path);
+  test(
+    'local Windows worker applies pack preprocess toggles',
+    () async {
+      final sample = File(_officialPackSample);
+      expect(sample.existsSync(), isTrue, reason: sample.path);
 
-    final state = AppState.bootstrap();
-    state.setPackMode(PackEditorMode.official);
-    await state.scanPack([sample.path]);
-    final scan = state.packEditor.scan;
-    expect(scan, isNotNull);
-    final scanResult = scan!;
+      final state = AppState.bootstrap();
+      state.setPackMode(PackEditorMode.official);
+      await state.scanPack([sample.path]);
+      final scan = state.packEditor.scan;
+      expect(scan, isNotNull);
+      final scanResult = scan!;
 
-    final outDir = await _smokeOutputDir('pack-preprocess');
-    final disabledPath = p.join(outDir.path, 'pack-preprocess-disabled.arcpkg');
-    final disabledSave = await state.platform.workerBridge.savePack(
-      PackSaveRequest(
-        scan: scanResult,
-        outputPath: disabledPath,
-        packName: state.packEditor.packName,
-        packId: state.packEditor.packId,
-        entries: state.packEditor.entries,
-        preprocess: const PreprocessOptions(
-          deleteDesignantLine: false,
-          fixZeroDurationArcTap: false,
-          fixReversedArcTime: false,
-          expandArcResolution: false,
+      final outDir = await _smokeOutputDir('pack-preprocess');
+      final disabledPath = p.join(
+        outDir.path,
+        'pack-preprocess-disabled.arcpkg',
+      );
+      final disabledSave = await state.platform.workerBridge.savePack(
+        PackSaveRequest(
+          scan: scanResult,
+          outputPath: disabledPath,
+          packName: state.packEditor.packName,
+          packId: state.packEditor.packId,
+          entries: state.packEditor.entries,
+          preprocess: const PreprocessOptions.disabled(),
         ),
-      ),
-    );
-    expect(disabledSave.ok, isTrue, reason: disabledSave.error);
-    final disabledLogs = disabledSave.logs.join('\n');
-    expect(disabledLogs, contains('Preprocessed'));
-    expect(disabledLogs, contains('designant=0'));
-    expect(disabledLogs, contains('zeroArcTap=0'));
-    expect(disabledLogs, contains('reversedArc=0'));
-    expect(disabledLogs, contains('arcresolution=0'));
+      );
+      expect(disabledSave.ok, isTrue, reason: disabledSave.error);
+      final disabledLogs = disabledSave.logs.join('\n');
+      expect(disabledLogs, contains('Preprocessed'));
+      expect(disabledLogs, contains('designant=0'));
+      expect(disabledLogs, contains('zeroArcTap=0'));
+      expect(disabledLogs, contains('reversedArc=0'));
+      expect(disabledLogs, contains('with Etoile.Lite'));
 
-    final enabledState = AppState.bootstrap();
-    enabledState.setPackMode(PackEditorMode.official);
-    await enabledState.scanPack([sample.path]);
-    final enabledScan = enabledState.packEditor.scan;
-    expect(enabledScan, isNotNull);
-    final enabledPath = p.join(outDir.path, 'pack-preprocess-enabled.arcpkg');
-    final enabledSave = await enabledState.platform.workerBridge.savePack(
-      PackSaveRequest(
-        scan: enabledScan!,
-        outputPath: enabledPath,
-        packName: enabledState.packEditor.packName,
-        packId: enabledState.packEditor.packId,
-        entries: enabledState.packEditor.entries,
-      ),
-    );
-    expect(enabledSave.ok, isTrue, reason: enabledSave.error);
-    expect(enabledSave.logs.join('\n'), contains('Preprocessed'));
-    expect(File(enabledPath).existsSync(), isTrue);
-    expect(File(enabledPath).lengthSync(), greaterThan(0));
-    // ignore: avoid_print
-    print('pack preprocess smoke output: $enabledPath');
-  }, skip: skipReason);
+      final enabledPath = p.join(outDir.path, 'pack-preprocess-enabled.arcpkg');
+      final enabledSave = await state.platform.workerBridge.savePack(
+        PackSaveRequest(
+          scan: scanResult,
+          outputPath: enabledPath,
+          packName: state.packEditor.packName,
+          packId: state.packEditor.packId,
+          entries: state.packEditor.entries,
+        ),
+      );
+      expect(enabledSave.ok, isTrue, reason: enabledSave.error);
+      expect(enabledSave.logs.join('\n'), contains('Preprocessed'));
+      expect(File(enabledPath).existsSync(), isTrue);
+      expect(File(enabledPath).lengthSync(), greaterThan(0));
+      // ignore: avoid_print
+      print('pack preprocess smoke output: $enabledPath');
+    },
+    skip: skipReason,
+    timeout: const Timeout(Duration(minutes: 2)),
+  );
 
   test('local Windows worker scans and saves an official pack zip', () async {
     final sample = File(_officialPackSample);
@@ -665,21 +686,26 @@ $original
 designant();
 arc(1000,1000,0.00,1.00,s,0.00,1.00,0,none,true)[arctap(1000)];
 arc(2400,1800,0.00,1.00,s,0.00,1.00,0,none,true);
-timinggroup(arcresolution=24){
-arc(3000,3600,0.00,1.00,s,0.00,1.00,0,none,true);
+scenecontrol(1000,trackhide);
+timinggroup(noinput){
+arc(3000,3600,0.00,1.00,s,0.00,1.00,0,none,true,2.00);
+arc(3700,4100,0.00,1.00,s,0.00,1.00,0,none,true,3.50);
 };
 ''');
 }
 
-Future<String> _readProjectArcproj(File arcpkg) async {
+Future<String> _readProjectArcproj(File arcpkg) =>
+    _readPackageText(arcpkg, '*/project.arcproj');
+
+Future<String> _readPackageText(File arcpkg, String pattern) async {
   expect(arcpkg.existsSync(), isTrue, reason: arcpkg.path);
   final script = r'''
 $Path = $env:ETOILEBRIDGE_TEST_ARCPKG_PATH
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [System.IO.Compression.ZipFile]::OpenRead($Path)
 try {
-  $entry = $zip.Entries | Where-Object { $_.FullName -like '*/project.arcproj' } | Select-Object -First 1
-  if ($null -eq $entry) { throw "project.arcproj not found" }
+  $entry = $zip.Entries | Where-Object { $_.FullName -like $env:ETOILEBRIDGE_TEST_ENTRY } | Select-Object -First 1
+  if ($null -eq $entry) { throw "Package entry not found" }
   $reader = [System.IO.StreamReader]::new($entry.Open(), [System.Text.Encoding]::UTF8)
   try { $reader.ReadToEnd() } finally { $reader.Dispose() }
 } finally {
@@ -689,7 +715,10 @@ try {
   final result = await Process.run(
     'powershell',
     ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script],
-    environment: {'ETOILEBRIDGE_TEST_ARCPKG_PATH': arcpkg.path},
+    environment: {
+      'ETOILEBRIDGE_TEST_ARCPKG_PATH': arcpkg.path,
+      'ETOILEBRIDGE_TEST_ENTRY': pattern,
+    },
   );
   expect(result.exitCode, 0, reason: '${result.stdout}\n${result.stderr}');
   return result.stdout.toString();

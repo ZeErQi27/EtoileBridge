@@ -7,6 +7,12 @@ import com.zeerqi27.etoilebridge.core.ArcCreateParticle
 import com.zeerqi27.etoilebridge.core.ArcCreateSide
 import com.zeerqi27.etoilebridge.core.ArcCreateSingleLine
 import com.zeerqi27.etoilebridge.core.ArcCreateTrack
+import com.zeerqi27.etoilebridge.core.BundleChartOverride
+import com.zeerqi27.etoilebridge.core.BundleConvertResult
+import com.zeerqi27.etoilebridge.core.BundleEntryOverride
+import com.zeerqi27.etoilebridge.core.BundleInput
+import com.zeerqi27.etoilebridge.core.BundleOptions
+import com.zeerqi27.etoilebridge.core.BundleOutputValidator
 import com.zeerqi27.etoilebridge.core.ConvertInput
 import com.zeerqi27.etoilebridge.core.ConvertOptions
 import com.zeerqi27.etoilebridge.core.ConvertResult
@@ -21,6 +27,7 @@ import com.zeerqi27.etoilebridge.core.ManualResourceOverrides
 import com.zeerqi27.etoilebridge.core.MetadataResolution
 import com.zeerqi27.etoilebridge.core.MetadataResolver
 import com.zeerqi27.etoilebridge.core.PackageOptions
+import com.zeerqi27.etoilebridge.core.PackBundleConverter
 import com.zeerqi27.etoilebridge.core.PacklistParser
 import com.zeerqi27.etoilebridge.core.ResourceResolver
 import com.zeerqi27.etoilebridge.core.ScannedInput
@@ -32,6 +39,8 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import java.io.BufferedInputStream
 import java.io.File
 import java.nio.charset.Charset
@@ -54,6 +63,7 @@ fun main(args: Array<String>) {
         when (action) {
             "scan-single" -> scanSingle(options)
             "convert-single" -> convertSingle(options)
+            "save-official-pack" -> saveOfficialPack(options)
             "smoke-test" -> WorkerEnvelope(ok = true, data = "flutter-worker smoke ok")
             else -> WorkerEnvelope(ok = false, error = "Unsupported flutter worker action: $action")
         }
@@ -294,12 +304,10 @@ private fun convertSingle(options: Map<String, String>): WorkerEnvelope {
         ),
         options = ConvertOptions(
             enableDeleteDesignantLine = request.preprocess.deleteDesignantLine,
-            enableFixZeroDurationArcTap = request.preprocess.fixZeroDurationArcTap,
-            enableFixReversedArcTime = request.preprocess.fixReversedArcTime,
-            enableExpandArcResolution = request.preprocess.expandArcResolution,
             keepWorkspaceOnFailure = true,
             cleanWorkspaceOnSuccess = true,
         ),
+        chartConverter = EtoileLiteChartConverter(options.requiredFile("lite")),
     )
 
     return when (result) {
@@ -328,6 +336,103 @@ private fun convertSingle(options: Map<String, String>): WorkerEnvelope {
         )
     }
 }
+
+private fun saveOfficialPack(options: Map<String, String>): WorkerEnvelope {
+    val output = options.requiredFile("output")
+    val request = JsonIo.decodeFromString<OfficialPackRequestJson>(
+        options.jsonOption("request-json") ?: error("Missing --request-json"),
+    )
+    val result = PackBundleConverter(
+        chartConverter = EtoileLiteChartConverter(options.requiredFile("lite")),
+    ).convertOfficialPack(
+        BundleInput(
+            workspaceDir = options.requiredFile("workspace"),
+            outputFile = output,
+            options = BundleOptions(
+                publisherId = request.publisherId.ifBlank { "etoilebridge" },
+                outputFileName = output.name,
+                packName = request.packName?.takeIf { it.isNotBlank() },
+                packId = request.packId?.takeIf { it.isNotBlank() },
+                packImageFile = request.packImagePath?.toExistingFileOrNull(),
+                convertOptions = ConvertOptions(enableDeleteDesignantLine = request.preprocess.deleteDesignantLine),
+                appearanceOptions = AppearanceOptions(
+                    particle = request.appearance.particle.toEnumOrDefault(ArcCreateParticle.INHERIT),
+                    accent = request.appearance.accent.toEnumOrDefault(ArcCreateAccent.INHERIT),
+                    track = request.appearance.track.toEnumOrDefault(ArcCreateTrack.INHERIT),
+                    singleLine = request.appearance.singleLine.toEnumOrDefault(ArcCreateSingleLine.NONE),
+                ),
+                entryOverrides = request.entries.associate { entry ->
+                    entry.key to BundleEntryOverride(
+                        enabled = entry.enabled,
+                        title = entry.title?.takeIf { it.isNotBlank() },
+                        artist = entry.artist?.takeIf { it.isNotBlank() },
+                        levelId = entry.levelId?.takeIf { it.isNotBlank() },
+                        chartOverrides = entry.charts.associate { chart ->
+                            chart.ratingClass to BundleChartOverride(
+                                enabled = chart.enabled,
+                                difficulty = chart.difficulty?.takeIf { it.isNotBlank() },
+                                chartConstant = chart.chartConstant,
+                                charter = chart.charter?.takeIf { it.isNotBlank() },
+                                illustrator = chart.illustrator?.takeIf { it.isNotBlank() },
+                            )
+                        },
+                    )
+                },
+            ),
+        ),
+    )
+    return when (result) {
+        is BundleConvertResult.Failed -> WorkerEnvelope(
+            ok = false, error = result.message, warnings = result.warnings, logs = result.logs,
+        )
+        is BundleConvertResult.Success -> {
+            val validation = BundleOutputValidator().validateBundleArcpkg(result.outputFile)
+            WorkerEnvelope(
+                ok = validation.valid,
+                error = validation.errors.takeIf { it.isNotEmpty() }?.joinToString("; "),
+                data = buildJsonObject {
+                    put("outputPath", result.outputFile.absolutePath)
+                    put("sizeBytes", result.outputFile.length())
+                    put("convertedCount", result.convertedCount)
+                    put("skippedCount", result.skippedCount)
+                },
+                warnings = result.warnings + validation.warnings,
+                logs = result.logs + validation.summaryLines() + validation.logs,
+            )
+        }
+    }
+}
+
+@Serializable
+private data class OfficialPackRequestJson(
+    val publisherId: String = "etoilebridge",
+    val packName: String? = null,
+    val packId: String? = null,
+    val packImagePath: String? = null,
+    val entries: List<OfficialPackEntryJson> = emptyList(),
+    val appearance: AppearanceJson = AppearanceJson(),
+    val preprocess: PreprocessJson = PreprocessJson(),
+)
+
+@Serializable
+private data class OfficialPackEntryJson(
+    val key: String,
+    val enabled: Boolean = true,
+    val title: String? = null,
+    val artist: String? = null,
+    val levelId: String? = null,
+    val charts: List<OfficialPackChartJson> = emptyList(),
+)
+
+@Serializable
+private data class OfficialPackChartJson(
+    val ratingClass: Int,
+    val enabled: Boolean = true,
+    val difficulty: String? = null,
+    val chartConstant: Float? = null,
+    val charter: String? = null,
+    val illustrator: String? = null,
+)
 
 private fun parseArgs(args: List<String>): Map<String, String> {
     val map = linkedMapOf<String, String>()
@@ -764,7 +869,4 @@ data class AppearanceJson(
 @Serializable
 data class PreprocessJson(
     val deleteDesignantLine: Boolean = true,
-    val fixZeroDurationArcTap: Boolean = true,
-    val fixReversedArcTime: Boolean = true,
-    val expandArcResolution: Boolean = true,
 )

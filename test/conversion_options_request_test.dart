@@ -22,12 +22,7 @@ void main() {
         track: 'TEMPEST',
         singleLine: 'NEO',
       ),
-      preprocess: const PreprocessOptions(
-        deleteDesignantLine: false,
-        fixZeroDurationArcTap: true,
-        fixReversedArcTime: false,
-        expandArcResolution: true,
-      ),
+      preprocess: const PreprocessOptions(deleteDesignantLine: false),
     );
 
     final json = request.toWorkerRequestJson();
@@ -39,12 +34,7 @@ void main() {
       'track': 'TEMPEST',
       'singleLine': 'NEO',
     });
-    expect(json['preprocess'], {
-      'deleteDesignantLine': false,
-      'fixZeroDurationArcTap': true,
-      'fixReversedArcTime': false,
-      'expandArcResolution': true,
-    });
+    expect(json['preprocess'], {'deleteDesignantLine': false});
   });
 
   test(
@@ -163,21 +153,11 @@ void main() {
       packName: 'Pack',
       packId: 'pack',
       entries: const [],
-      preprocess: const PreprocessOptions(
-        deleteDesignantLine: true,
-        fixZeroDurationArcTap: false,
-        fixReversedArcTime: true,
-        expandArcResolution: false,
-      ),
+      preprocess: const PreprocessOptions(deleteDesignantLine: true),
     );
 
     final json = request.toWorkerRequestJson();
-    expect(json['preprocess'], {
-      'deleteDesignantLine': true,
-      'fixZeroDurationArcTap': false,
-      'fixReversedArcTime': true,
-      'expandArcResolution': false,
-    });
+    expect(json['preprocess'], {'deleteDesignantLine': true});
   });
 
   test('existing pack save request disables preprocess options', () {
@@ -194,21 +174,11 @@ void main() {
       packName: 'Pack',
       packId: 'pack',
       entries: const [],
-      preprocess: const PreprocessOptions(
-        deleteDesignantLine: true,
-        fixZeroDurationArcTap: true,
-        fixReversedArcTime: true,
-        expandArcResolution: true,
-      ),
+      preprocess: const PreprocessOptions(deleteDesignantLine: true),
     );
 
     final json = request.toWorkerRequestJson();
-    expect(json['preprocess'], {
-      'deleteDesignantLine': false,
-      'fixZeroDurationArcTap': false,
-      'fixReversedArcTime': false,
-      'expandArcResolution': false,
-    });
+    expect(json['preprocess'], {'deleteDesignantLine': false});
   });
 
   test('pack save request serializes disabled chart choices', () {
