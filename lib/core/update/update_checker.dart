@@ -144,17 +144,21 @@ int? compareVersions(String latest, String current) {
     final r = i < right.parts.length ? right.parts[i] : 0;
     if (l != r) return l.compareTo(r);
   }
-  if (left.preRelease == right.preRelease) return 0;
   if (!left.preRelease && right.preRelease) return 1;
   if (left.preRelease && !right.preRelease) return -1;
-  return 0;
+  return left.revision.compareTo(right.revision);
 }
 
 class _ParsedVersion {
-  const _ParsedVersion({required this.parts, required this.preRelease});
+  const _ParsedVersion({
+    required this.parts,
+    required this.preRelease,
+    required this.revision,
+  });
 
   final List<int> parts;
   final bool preRelease;
+  final int revision;
 
   static _ParsedVersion? parse(String raw) {
     var value = raw.trim();
@@ -164,6 +168,11 @@ class _ParsedVersion {
     value = value.split('+').first;
     final preRelease = value.contains('-');
     value = value.split('-').first;
+    const hotfix = 'fixedbug';
+    final revision = value.endsWith(hotfix) ? 1 : 0;
+    if (revision != 0) {
+      value = value.substring(0, value.length - hotfix.length);
+    }
     final parts = value
         .split('.')
         .where((part) => part.trim().isNotEmpty)
@@ -173,6 +182,7 @@ class _ParsedVersion {
     return _ParsedVersion(
       parts: parts.whereType<int>().toList(growable: false),
       preRelease: preRelease,
+      revision: revision,
     );
   }
 }

@@ -112,7 +112,7 @@ class AndroidPackBridge(private val context: Context) {
                 "official" -> {
                     val workspace = args.stringArg("workspace")?.let(::File)
                         ?: error("Missing official pack workspace.")
-                    PackBundleConverter().convertOfficialPack(
+                    PackBundleConverter(chartConverter = AndroidEtoileLite.forCurrentProcess()).convertOfficialPack(
                         BundleInput(
                             workspaceDir = workspace,
                             outputFile = tempOutput,

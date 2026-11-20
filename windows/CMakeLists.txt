@@ -93,12 +93,11 @@ get_filename_component(ETOILEBRIDGE_WORKSPACE_ROOT
   "${ETOILEBRIDGE_PROJECT_ROOT}/.." ABSOLUTE)
 
 # Compile the pinned upstream parser into a self-contained Windows companion.
-set(ETOILE_LITE_DOTNET "$ENV{ETOILEBRIDGE_DOTNET}" CACHE FILEPATH
-  ".NET 10 SDK dotnet executable")
+set(ETOILE_LITE_DOTNET "$ENV{ETOILEBRIDGE_DOTNET}")
 if(NOT ETOILE_LITE_DOTNET)
   find_program(ETOILE_LITE_DEFAULT_DOTNET NAMES dotnet)
   if(NOT ETOILE_LITE_DEFAULT_DOTNET)
-    message(FATAL_ERROR "Install .NET 10 SDK or set ETOILEBRIDGE_DOTNET.")
+    message(FATAL_ERROR "Install .NET 10.0.404+ or set ETOILEBRIDGE_DOTNET.")
   endif()
   set(ETOILE_LITE_DOTNET "${ETOILE_LITE_DEFAULT_DOTNET}")
 endif()
@@ -118,6 +117,8 @@ add_custom_command(
     -p:DebugType=None --artifacts-path "${ETOILEBRIDGE_PROJECT_ROOT}/build/etoile-lite-obj"
     -o "${ETOILE_LITE_OUTPUT}"
   DEPENDS "${ETOILE_LITE_SOURCE}/EtoileBridge.Lite.csproj" "${ETOILE_LITE_SOURCE}/Program.cs"
+    "${ETOILE_LITE_SOURCE}/ChartConversion.cs" "${ETOILE_LITE_SOURCE}/global.json"
+  WORKING_DIRECTORY "${ETOILE_LITE_SOURCE}"
   VERBATIM)
 add_custom_target(etoile_lite_adapter DEPENDS "${ETOILE_LITE_EXE}")
 add_dependencies(${BINARY_NAME} etoile_lite_adapter)

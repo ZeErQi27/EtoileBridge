@@ -51,7 +51,22 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        externalNativeBuild {
+            cmake {
+                abiFilters += setOf("arm64-v8a", "x86_64")
+            }
+        }
     }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
+    sourceSets.getByName("androidTest").assets.srcDir("../../native/etoile-lite-adapter/test-fixtures")
 
     signingConfigs {
         if (hasReleaseSigningProperties) {
@@ -88,4 +103,6 @@ flutter {
 dependencies {
     implementation(project(":converter-core"))
     implementation("androidx.documentfile:documentfile:1.0.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
 }

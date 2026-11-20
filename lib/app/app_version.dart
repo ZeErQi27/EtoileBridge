@@ -1,2 +1,2 @@
-const appVersionName = '1.2.261120';
+const appVersionName = '1.2.261120fixedbug';
 const appVersionLabel = 'v$appVersionName';

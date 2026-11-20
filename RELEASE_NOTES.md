@@ -1,12 +1,5 @@
-# EtoileBridge v1.2.261120
+# EtoileBridge v1.2.261120fixedbug
 
-## Changes
-
-- Bug fixes.
-
-## Download Notes
-
-- Windows is distributed as a portable zip package.
-- Download `EtoileBridge-Windows-1.2.261120-x64-portable.zip`, extract it, then run `etoile_bridge.exe`.
-- No installer is required.
-- Windows conversion uses Etoile.Lite v0.1.7. The Android APK continues to use the Kotlin converter.
+- **Added:** Etoile.Lite v0.1.7 for single-song and official pack exports on 64-bit Android.
+- **Updated:** Windows and 64-bit Android now share the converter. Update checking recognizes the `fixedbug` version suffix.
+- **Compatibility:** 32-bit ARM Android continues to use the Kotlin converter.

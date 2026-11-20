@@ -56,6 +56,8 @@ session*/
 **/session*/
 *.arcpkg
 *.aff
+# Synthetic chart used by the Android integration tests.
+!/native/etoile-lite-adapter/test-fixtures/native-resolution.aff
 *.ogg
 *.mp3
 *.wav

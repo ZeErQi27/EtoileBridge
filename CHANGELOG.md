@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.261120fixedbug
+
+- Added Etoile.Lite v0.1.7 to 64-bit Android exports.
+- Shared chart conversion between Windows and 64-bit Android.
+- Updated the version checker to recognize the `fixedbug` suffix.
+
 ## v1.2.261120
 
 - Bug fixes.

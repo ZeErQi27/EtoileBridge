@@ -63,6 +63,10 @@ void main() {
     expect(compareVersions('v1.3.26627', 'v1.3.26626'), greaterThan(0));
     expect(compareVersions('v1.3.26625', 'v1.3.26626'), lessThan(0));
     expect(compareVersions('not-a-version', 'v1.3.26626'), isNull);
+    expect(compareVersions('v1.2.261120fixedbug', '1.2.261120'), 1);
+    expect(compareVersions('v1.2.261120', '1.2.261120fixedbug'), -1);
+    expect(compareVersions('v1.2.261120fixedbug', '1.2.261120fixedbug'), 0);
+    expect(compareVersions('v1.2.261121', '1.2.261120fixedbug'), 1);
   });
 
   test('single scan can apply inferred side until user edits appearance', () {

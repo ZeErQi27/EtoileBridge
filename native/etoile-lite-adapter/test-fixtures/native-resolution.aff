@@ -1,0 +1,10 @@
+AudioOffset:0
+-
+timing(0,120.00,4.00);
+arc(1000,1000,0.00,1.00,s,0.00,1.00,0,none,true)[arctap(1000)];
+arc(2400,1800,0.00,1.00,s,0.00,1.00,0,none,true);
+scenecontrol(1000,trackhide);
+timinggroup(noinput){
+  arc(3000,3600,0.00,1.00,s,0.00,1.00,0,none,true,2.00);
+  arc(3700,4100,0.00,1.00,s,0.00,1.00,0,none,true,3.50);
+};

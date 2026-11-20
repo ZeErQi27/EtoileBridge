@@ -5,7 +5,25 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+  <PropertyGroup Condition="$(RuntimeIdentifier.StartsWith('linux-bionic'))">
+    <OutputType>Library</OutputType>
+    <AssemblyName>libetoile_lite</AssemblyName>
+    <PublishAot>true</PublishAot>
+    <NativeLib>Shared</NativeLib>
+    <PublishAotUsingRuntimePack>true</PublishAotUsingRuntimePack>
+    <DisableUnsupportedError>true</DisableUnsupportedError>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Etoile.Lite.Parser" Version="[0.1.7]" />
+  </ItemGroup>
+  <ItemGroup Condition="$(RuntimeIdentifier.StartsWith('linux-bionic'))">
+    <Compile Remove="Program.cs" />
+    <LinkerArg Include="-Wl,-soname,libetoile_lite.so" />
+    <LinkerArg Include="-Wl,-z,max-page-size=16384" />
+  </ItemGroup>
+  <ItemGroup Condition="!$(RuntimeIdentifier.StartsWith('linux-bionic'))">
+    <Compile Remove="AndroidExports.cs" />
   </ItemGroup>
 </Project>

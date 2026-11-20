@@ -336,6 +336,7 @@ class AndroidSingleSongBridge(private val context: Context) {
                 keepWorkspaceOnFailure = true,
                 cleanWorkspaceOnSuccess = true,
             ),
+            chartConverter = AndroidEtoileLite.forCurrentProcess(),
         )
         return when (result) {
             is ConvertResult.Success -> ConvertPayload(
