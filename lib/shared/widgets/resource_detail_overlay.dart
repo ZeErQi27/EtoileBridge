@@ -1,10 +1,12 @@
 import 'dart:io';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../app/app_spacing.dart';
+import '../../app/theme.dart';
 import '../../core/i18n/app_strings.dart';
 import '../../core/models/single_song_models.dart';
+import 'app_motion.dart';
 import 'audio_preview.dart';
 import 'info_row.dart';
 import 'pretty_ui.dart';
@@ -34,9 +36,10 @@ void showResourceDetailOverlay(
     PageRouteBuilder<void>(
       opaque: false,
       barrierDismissible: true,
-      barrierColor: Colors.black.withValues(alpha: 0.22),
-      transitionDuration: const Duration(milliseconds: 360),
-      reverseTransitionDuration: const Duration(milliseconds: 260),
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      barrierColor: context.colors.scrim.withValues(alpha: 0.32),
+      transitionDuration: AppMotion.duration(context, AppMotion.overlay),
+      reverseTransitionDuration: AppMotion.duration(context, AppMotion.dismiss),
       pageBuilder: (context, animation, secondaryAnimation) {
         return _ResourceDetailOverlay(
           heroTag: heroTag,
@@ -51,17 +54,9 @@ void showResourceDetailOverlay(
         );
       },
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
-        final curved = CurvedAnimation(
-          parent: animation,
-          curve: Curves.easeOutCubic,
-          reverseCurve: Curves.easeInCubic,
-        );
         return FadeTransition(
-          opacity: curved,
-          child: ScaleTransition(
-            scale: Tween<double>(begin: 0.985, end: 1).animate(curved),
-            child: child,
-          ),
+          opacity: animation.drive(CurveTween(curve: AppMotion.enter)),
+          child: child,
         );
       },
     ),
@@ -93,105 +88,84 @@ class _ResourceDetailOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
-    return Material(
-      color: Colors.transparent,
-      child: SafeArea(
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => Navigator.of(context).pop(),
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: math.min(920.0, size.width - 48),
-                  maxHeight: math.max(260.0, size.height - 48),
-                ),
-                child: Hero(
-                  tag: heroTag,
-                  child: Material(
-                    color: Colors.transparent,
-                    child: GestureDetector(
-                      onTap: () {},
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: PrettyColors.panel,
-                          borderRadius: BorderRadius.circular(28),
-                          border: Border.all(color: PrettyColors.borderStrong),
-                          boxShadow: [
-                            BoxShadow(
-                              color: PrettyColors.primary.withValues(
-                                alpha: 0.22,
+    final compact = MediaQuery.sizeOf(context).width < 600;
+    final theme = Theme.of(context);
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.all(compact ? 12 : 24),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 860),
+            child: Hero(
+              tag: heroTag,
+              createRectTween: (begin, end) =>
+                  MaterialRectCenterArcTween(begin: begin, end: end),
+              child: WorkspaceSurface(
+                radius: AppRadius.workspaceDialog,
+                child: Padding(
+                  padding: EdgeInsets.all(compact ? 14 : 20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(icon, size: 23, color: context.colors.primary),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            flex: 3,
+                            child: Text(
+                              title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.w700,
                               ),
-                              blurRadius: 50,
-                              offset: const Offset(0, 24),
                             ),
-                          ],
-                        ),
-                        padding: const EdgeInsets.all(22),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(icon, color: PrettyColors.primary),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    title,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleLarge
-                                        ?.copyWith(
-                                          color: PrettyColors.text,
-                                          fontWeight: FontWeight.w900,
-                                        ),
+                          ),
+                          Flexible(
+                            flex: 2,
+                            child: Align(
+                              alignment: Alignment.centerRight,
+                              child: PrettyPill(
+                                label:
+                                    statusLabel ??
+                                    _resourceStatusLabel(context, resource),
+                                tone: statusTone,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          IconButton(
+                            tooltip: context.t('resource.closeDetails'),
+                            onPressed: () => Navigator.of(context).pop(),
+                            icon: const Icon(Icons.close_rounded),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Flexible(
+                        child: SingleChildScrollView(
+                          primary: false,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              preview ??
+                                  _DefaultResourcePreview(
+                                    resource: resource,
+                                    kind: kind,
+                                    icon: icon,
                                   ),
-                                ),
-                                PrettyPill(
-                                  label:
-                                      statusLabel ??
-                                      _resourceStatusLabel(context, resource),
-                                  tone: statusTone,
-                                ),
-                                const SizedBox(width: 8),
-                                IconButton(
-                                  tooltip: context.t('resource.closeDetails'),
-                                  onPressed: () => Navigator.of(context).pop(),
-                                  icon: const Icon(Icons.close_rounded),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            Flexible(
-                              child: SingleChildScrollView(
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: [
-                                    preview ??
-                                        _DefaultResourcePreview(
-                                          resource: resource,
-                                          kind: kind,
-                                          icon: icon,
-                                        ),
-                                    const SizedBox(height: 16),
-                                    _ResourceDetailInfo(
-                                      resource: resource,
-                                      rows: rows,
-                                    ),
-                                  ],
-                                ),
+                              const SizedBox(height: 12),
+                              _ResourceDetailInfo(
+                                resource: resource,
+                                rows: rows,
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
-                    ),
+                    ],
                   ),
                 ),
               ),
@@ -220,11 +194,11 @@ class _DefaultResourcePreview extends StatelessWidget {
     final exists = file != null && file.existsSync();
     if (kind == ResourceDetailKind.image) {
       return ClipRRect(
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(AppRadius.workspaceInset),
         child: Container(
           height: 360,
           constraints: const BoxConstraints(maxHeight: 460),
-          color: PrettyColors.primarySofter.withValues(alpha: 0.42),
+          color: context.colors.surfaceContainerHigh.withValues(alpha: 0.42),
           child: exists
               ? Stack(
                   fit: StackFit.expand,
@@ -249,15 +223,12 @@ class _DefaultResourcePreview extends StatelessWidget {
       );
     }
     if (kind == ResourceDetailKind.audio) {
-      return SizedBox(
-        height: 240,
-        child: resource == null
-            ? _LargeEmptyPreview(
-                icon: icon,
-                label: context.t('resource.waveformUnavailable'),
-              )
-            : AudioPreviewPanel(resource: resource!),
-      );
+      return resource == null
+          ? _LargeEmptyPreview(
+              icon: icon,
+              label: context.t('resource.waveformUnavailable'),
+            )
+          : AudioPreviewPanel(resource: resource!);
     }
     return _LargeEmptyPreview(
       icon: icon,
@@ -312,13 +283,13 @@ class _LargeEmptyPreview extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 42, color: PrettyColors.faint),
+            Icon(icon, size: 42, color: context.colors.onSurfaceVariant),
             const SizedBox(height: 10),
             Text(
               label,
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: PrettyColors.muted),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: context.colors.onSurfaceVariant,
+              ),
             ),
           ],
         ),

@@ -42,7 +42,7 @@ flutter analyze
 flutter test
 .\android\gradlew.bat -p native/converter-worker :converter-worker:installDist
 flutter build windows
-flutter build apk --release --build-name 1.2.261120fixedbug
+flutter build apk --release
 ```
 
 To build the full Windows portable bundle, point

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../app/app_spacing.dart';
 import '../../app/routes.dart';
 import '../../app/safe_action.dart';
 import '../../core/i18n/app_strings.dart';
@@ -11,6 +12,7 @@ class PreprocessOptionsPanel extends StatelessWidget {
     required this.onChanged,
     required this.pageId,
     required this.actionPrefix,
+    this.enabled = true,
     super.key,
   });
 
@@ -18,48 +20,83 @@ class PreprocessOptionsPanel extends StatelessWidget {
   final ValueChanged<PreprocessOptions> onChanged;
   final AppPageId pageId;
   final String actionPrefix;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final enabled = value.deleteDesignantLine;
-    final reduceMotion = MediaQuery.disableAnimationsOf(context);
-    final radius = BorderRadius.circular(enabled ? 20 : 12);
-    return AnimatedContainer(
-      duration: reduceMotion
-          ? Duration.zero
-          : const Duration(milliseconds: 180),
-      curve: Curves.easeOutCubic,
-      decoration: BoxDecoration(
-        color: enabled ? scheme.secondaryContainer : scheme.surfaceContainerLow,
-        borderRadius: radius,
-        border: Border.all(
-          color: enabled ? Colors.transparent : scheme.outlineVariant,
-        ),
-      ),
+    final shape = RoundedSuperellipseBorder(
+      borderRadius: BorderRadius.circular(AppRadius.workspaceControl),
+    );
+    return Tooltip(
+      message: context.t('preprocess'),
       child: Material(
-        color: Colors.transparent,
+        color: scheme.surfaceContainer,
+        shape: shape,
         child: SwitchListTile(
-          shape: RoundedRectangleBorder(borderRadius: radius),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+          dense: true,
+          shape: shape,
+          contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
           title: Text(
             context.t('preprocess.deleteDesignant'),
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              color: enabled ? scheme.onSecondaryContainer : scheme.onSurface,
-              fontWeight: FontWeight.w700,
-            ),
+            style: Theme.of(context).textTheme.labelLarge,
           ),
-          value: enabled,
-          onChanged: (next) => safeAction(
-            context,
-            id: '$actionPrefix.deleteDesignantLine',
-            label: 'deleteDesignantLine=$next',
-            page: pageId,
-            action: () =>
-                onChanged(PreprocessOptions(deleteDesignantLine: next)),
-          ),
+          value: value.deleteDesignantLine,
+          onChanged: enabled
+              ? (next) => safeAction(
+                  context,
+                  id: '$actionPrefix.deleteDesignantLine',
+                  label: 'deleteDesignantLine=$next',
+                  page: pageId,
+                  action: () =>
+                      onChanged(PreprocessOptions(deleteDesignantLine: next)),
+                )
+              : null,
         ),
       ),
+    );
+  }
+}
+
+class WorkspaceExportActions extends StatelessWidget {
+  const WorkspaceExportActions({
+    required this.save,
+    this.preprocess,
+    super.key,
+  });
+
+  final Widget save;
+  final Widget? preprocess;
+
+  @override
+  Widget build(BuildContext context) {
+    final option = preprocess;
+    if (option == null) return SizedBox(width: double.infinity, child: save);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final inline =
+            width >= 418 && MediaQuery.textScalerOf(context).scale(14) <= 17;
+        final saveWidth = inline ? (width * 0.42).clamp(164.0, 220.0) : width;
+        return Flex(
+          direction: inline ? Axis.horizontal : Axis.vertical,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            SizedBox(
+              width: inline
+                  ? (width - saveWidth - AppSpacing.sm).clamp(0.0, 300.0)
+                  : width,
+              child: option,
+            ),
+            SizedBox(
+              width: inline ? AppSpacing.sm : 0,
+              height: inline ? 0 : AppSpacing.xs,
+            ),
+            SizedBox(width: saveWidth, child: save),
+          ],
+        );
+      },
     );
   }
 }

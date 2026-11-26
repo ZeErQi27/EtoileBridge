@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -6,10 +8,11 @@ import '../../app/app_spacing.dart';
 import '../../app/app_state.dart';
 import '../../app/app_version.dart';
 import '../../app/safe_action.dart';
-import '../../app/safe_layout.dart';
+import '../../app/theme.dart';
 import '../../core/i18n/app_strings.dart';
 import '../../core/platform/external_url_opener.dart';
 import '../../core/update/update_checker.dart';
+import '../widgets/app_motion.dart';
 
 class SettingsOverlay extends StatefulWidget {
   const SettingsOverlay({super.key, this.sourceRect});
@@ -22,24 +25,22 @@ class SettingsOverlay extends StatefulWidget {
 
 class _SettingsOverlayState extends State<SettingsOverlay>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  late final Animation<double> _animation;
+  late final _controller = AnimationController(
+    vsync: this,
+    duration: AppMotion.overlay,
+    reverseDuration: AppMotion.dismiss,
+  );
   bool _closing = false;
 
   @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 280),
-      reverseDuration: const Duration(milliseconds: 220),
-    );
-    _animation = CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeOutCubic,
-      reverseCurve: Curves.easeInCubic,
-    );
-    _controller.forward();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_closing) return;
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _controller.value = 1;
+    } else if (_controller.isDismissed) {
+      _controller.forward();
+    }
   }
 
   @override
@@ -48,23 +49,28 @@ class _SettingsOverlayState extends State<SettingsOverlay>
     super.dispose();
   }
 
-  Future<void> _close(BuildContext context) async {
+  Future<void> _close() async {
     if (_closing) return;
     _closing = true;
-    await _controller.reverse();
-    if (!context.mounted) return;
-    AppScope.of(context).closeSettings();
+    if (!MediaQuery.disableAnimationsOf(context)) {
+      await _controller.reverse();
+    }
+    if (mounted) AppScope.of(context).closeSettings();
+  }
+
+  void _requestClose() {
+    safeAction(
+      context,
+      id: 'settings.close',
+      label: context.t('close'),
+      action: _close,
+    );
   }
 
   KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
     if (event is KeyDownEvent &&
         event.logicalKey == LogicalKeyboardKey.escape) {
-      safeAction(
-        context,
-        id: 'settings.close',
-        label: context.t('close'),
-        action: () => _close(context),
-      );
+      _requestClose();
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
@@ -73,81 +79,98 @@ class _SettingsOverlayState extends State<SettingsOverlay>
   @override
   Widget build(BuildContext context) {
     final isWindows = defaultTargetPlatform == TargetPlatform.windows;
-    final child = Stack(
-      children: [
-        AnimatedBuilder(
-          animation: _animation,
-          builder: (context, _) {
-            return ModalBarrier(
-              color: isWindows
-                  ? Colors.transparent
-                  : Colors.black.withValues(alpha: 0.28 * _animation.value),
-              dismissible: true,
-              onDismiss: () => safeAction(
-                context,
-                id: 'settings.close',
-                label: context.t('close'),
-                action: () => _close(context),
-              ),
-            );
-          },
+    final scheme = context.colors;
+    final media = MediaQuery.of(context);
+    final compact = media.size.width < 600;
+    final margin = compact ? 12.0 : 24.0;
+    final safe = Rect.fromLTRB(
+      media.padding.left + margin,
+      media.padding.top + margin,
+      media.size.width - media.padding.right - margin,
+      media.size.height -
+          math.max(media.padding.bottom, media.viewInsets.bottom) -
+          margin,
+    );
+    final width = math.max(0.0, math.min(safe.width, 464.0));
+    final height = math.max(0.0, math.min(safe.height, 438.0));
+    final destination = Rect.fromCenter(
+      center: compact
+          ? Offset(safe.center.dx, safe.bottom - height / 2)
+          : safe.center,
+      width: width,
+      height: height,
+    );
+    final anchor = widget.sourceRect;
+    final source = anchor != null && (Offset.zero & media.size).overlaps(anchor)
+        ? anchor
+        : Rect.fromCenter(center: destination.center, width: 44, height: 44);
+
+    final child = PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _requestClose();
+      },
+      child: AnimatedBuilder(
+        animation: _controller,
+        child: RepaintBoundary(
+          child: Focus(
+            autofocus: true,
+            onKeyEvent: _onKeyEvent,
+            child: SettingsPanel(onClose: _close),
+          ),
         ),
-        Focus(
-          autofocus: true,
-          onKeyEvent: _onKeyEvent,
-          child: AnimatedBuilder(
-            animation: _animation,
-            builder: (context, child) {
-              final screen = MediaQuery.sizeOf(context);
-              final source = widget.sourceRect;
-              final sourceCenter =
-                  source?.center ?? Offset(screen.width / 2, screen.height / 2);
-              final targetCenter = Offset(screen.width / 2, screen.height / 2);
-              final offset = Offset.lerp(
-                sourceCenter - targetCenter,
-                Offset.zero,
-                _animation.value,
-              )!;
-              final minSide = source == null
-                  ? 88.0
-                  : source.size.shortestSide.clamp(44.0, 96.0).toDouble();
-              final scaleStart = (minSide / 520).clamp(0.08, 0.22).toDouble();
-              final scale = scaleStart + (1 - scaleStart) * _animation.value;
-              return Center(
-                child: Transform.translate(
-                  offset: offset,
-                  child: Transform.scale(
-                    scale: scale,
-                    child: Opacity(
-                      opacity: (0.35 + _animation.value * 0.65)
-                          .clamp(0, 1)
-                          .toDouble(),
-                      child: child,
+        builder: (context, panel) {
+          final t = AppMotion.travel.transform(_controller.value);
+          final rect = Rect.lerp(source, destination, t)!;
+          final reveal = const Interval(
+            0.23,
+            1,
+            curve: AppMotion.enter,
+          ).transform(_controller.value);
+          final radii = BorderRadius.circular(
+            AppRadius.workspaceControl +
+                (AppRadius.workspaceDialog - AppRadius.workspaceControl) * t,
+          );
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              ModalBarrier(
+                color: scheme.scrim.withValues(
+                  alpha: t * (isWindows ? 0.24 : 0.34),
+                ),
+                semanticsLabel: context.t('close'),
+                onDismiss: _requestClose,
+              ),
+              Positioned.fromRect(
+                rect: rect,
+                child: Material(
+                  elevation: 6 * t,
+                  color: Color.lerp(
+                    scheme.secondaryContainer,
+                    scheme.surfaceContainerLow,
+                    t,
+                  ),
+                  shape: RoundedSuperellipseBorder(borderRadius: radii),
+                  clipBehavior: Clip.antiAlias,
+                  child: OverflowBox(
+                    alignment: Alignment.topLeft,
+                    minWidth: width,
+                    maxWidth: width,
+                    minHeight: height,
+                    maxHeight: height,
+                    child: IgnorePointer(
+                      ignoring: _closing || reveal < 0.70,
+                      child: Opacity(opacity: reveal, child: panel),
                     ),
                   ),
                 ),
-              );
-            },
-            child: Padding(
-              padding: const EdgeInsets.all(AppSpacing.lg),
-              child: RepaintBoundary(
-                child: Dialog(
-                  child: ConstrainedBox(
-                    constraints: SafeLayout.dialogConstraints(context),
-                    child: SettingsPanel(onClose: () => _close(context)),
-                  ),
-                ),
               ),
-            ),
-          ),
-        ),
-      ],
+            ],
+          );
+        },
+      ),
     );
-
-    if (isWindows) {
-      return ExcludeSemantics(child: child);
-    }
-    return child;
+    return isWindows ? ExcludeSemantics(child: child) : child;
   }
 }
 
@@ -182,7 +205,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
         children: [
           Row(
             children: [
-              Icon(Icons.settings_rounded, color: theme.colorScheme.primary),
+              Icon(Icons.settings_outlined, color: theme.colorScheme.primary),
               const SizedBox(width: AppSpacing.sm),
               Expanded(
                 child: Text(
@@ -193,6 +216,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
                 ),
               ),
               IconButton(
+                tooltip: strings.t('close'),
                 onPressed: () => safeAction(
                   context,
                   id: 'settings.close',
@@ -244,7 +268,6 @@ class _SettingsPanelState extends State<SettingsPanel> {
                     ],
                   ),
                   const SizedBox(height: AppSpacing.md),
-                  const Divider(),
                   _SettingsTile(
                     icon: Icons.cleaning_services_rounded,
                     title: strings.t('clearCache'),
@@ -261,12 +284,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
                     icon: Icons.info_rounded,
                     title: strings.t('about'),
                     subtitle: 'EtoileBridge Flutter $appVersionName',
-                    onTap: () => safeAction(
-                      context,
-                      id: 'settings.about',
-                      label: strings.t('about'),
-                      action: () {},
-                    ),
+                    onTap: null,
                   ),
                   _SettingsTile(
                     icon: Icons.system_update_alt_rounded,

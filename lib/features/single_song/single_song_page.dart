@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -6,19 +5,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 
+import '../../app/app_spacing.dart';
 import '../../app/app_state.dart';
 import '../../app/routes.dart';
 import '../../app/safe_layout.dart';
 import '../../app/safe_action.dart';
+import '../../app/theme.dart';
 import '../../core/i18n/app_strings.dart';
 import '../../core/models/conversion_options.dart';
 import '../../core/models/operation_models.dart';
 import '../../core/models/single_song_models.dart';
 import '../../shared/widgets/conversion_options_controls.dart';
+import '../../shared/widgets/app_motion.dart';
 import '../../shared/widgets/audio_preview.dart';
 import '../../shared/widgets/info_row.dart';
 import '../../shared/widgets/log_panel.dart';
 import '../../shared/widgets/pretty_ui.dart';
+import '../../shared/widgets/resource_detail_overlay.dart';
+import '../../shared/widgets/workspace_choices.dart';
 import '../../shared/layout/app_layout_tokens.dart';
 import 'single_song_state.dart';
 
@@ -29,14 +33,31 @@ class SingleSongPage extends StatefulWidget {
   State<SingleSongPage> createState() => _SingleSongPageState();
 }
 
-class _SingleSongPageState extends State<SingleSongPage> {
-  final _saveKey = GlobalKey();
-  bool _saveHighlighted = false;
-  Timer? _highlightTimer;
+class _SingleSongPageState extends State<SingleSongPage>
+    with SingleTickerProviderStateMixin {
+  bool _appearanceExpanded = false;
+  late final _appearanceReveal = AnimationController(
+    vsync: this,
+    duration: AppMotion.reveal,
+  );
+  late final _appearanceHeight = _appearanceReveal.drive(
+    CurveTween(curve: AppMotion.travel),
+  );
+  late final _appearanceFade = _appearanceReveal.drive(
+    CurveTween(curve: const Interval(0.18, 1, curve: AppMotion.enter)),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _appearanceReveal.value = _appearanceExpanded ? 1 : 0;
+    }
+  }
 
   @override
   void dispose() {
-    _highlightTimer?.cancel();
+    _appearanceReveal.dispose();
     super.dispose();
   }
 
@@ -45,154 +66,197 @@ class _SingleSongPageState extends State<SingleSongPage> {
     final state = AppScope.of(context);
     final page = state.singleSong;
     final busy = _isBusy(page);
+    final input = AppWorkspacePanel(
+      'input',
+      _InputWorkbenchCard(state: state, page: page, busy: busy),
+    );
+    final save = AppWorkspacePanel(
+      'save',
+      _SaveWorkbenchCard(state: state, page: page, busy: busy),
+    );
+    final chart = AppWorkspacePanel(
+      'chart',
+      _SongChartInfoWorkbenchCard(
+        state: state,
+        page: page,
+        onChanged: _refresh,
+      ),
+    );
+    final appearanceValue = page.appearanceOptions;
+    final resources = AppWorkspacePanel(
+      'resources',
+      _ResourcePreviewWorkbenchCard(state: state, page: page),
+    );
+    final diagnostics = page.scan == null
+        ? null
+        : AppWorkspacePanel(
+            'diagnostics',
+            _DiagnosticsWorkbenchCard(page: page),
+          );
+    const alignmentStretch = AppLayoutTokens.maxCardAlignmentStretch;
 
-    return SingleChildScrollView(
-      padding: AppLayoutTokens.pagePadding(context),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(
-            maxWidth: AppLayoutTokens.pageContentMaxWidth,
-          ),
-          child: _FadeIn(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const _SingleHeader(),
-                const SizedBox(height: 24),
-                _ResponsiveDashboard(
-                  enableThreeColumns: page.scan != null,
-                  left: [
-                    _InputWorkbenchCard(state: state, page: page, busy: busy),
-                    _StatusWorkbenchCard(
-                      page: page,
-                      busy: busy,
-                      onContinue: page.scan == null ? null : _jumpToSaveSection,
-                    ),
-                    if (page.scan != null)
-                      _SaveWorkbenchCard(
-                        key: _saveKey,
-                        state: state,
-                        page: page,
-                        busy: busy,
-                        highlighted: _saveHighlighted,
-                      ),
-                  ],
-                  middle: [
-                    _SongChartInfoWorkbenchCard(
-                      state: state,
-                      page: page,
-                      onChanged: _refresh,
-                    ),
-                    _AppearanceWorkbenchCard(state: state, page: page),
-                    _PreprocessWorkbenchCard(state: state, page: page),
-                  ],
-                  right: [
-                    _ResourcePreviewWorkbenchCard(state: state, page: page),
-                    _AffMappingWorkbenchCard(scan: page.scan),
-                    if (page.scan == null)
-                      _SaveWorkbenchCard(
-                        key: _saveKey,
-                        state: state,
-                        page: page,
-                        busy: busy,
-                        highlighted: _saveHighlighted,
-                      ),
-                    if (page.scan != null)
-                      _DiagnosticsWorkbenchCard(page: page),
-                  ],
-                ),
-              ],
+    void updateAppearance(
+      ArcCreateAppearanceOptions next,
+      String field,
+      String value,
+    ) {
+      safeAction(
+        context,
+        id: 'single.appearance.$field',
+        label: value,
+        page: AppPageId.singleSong,
+        action: () => state.updateSingleAppearance(next),
+      );
+    }
+
+    return AppWorkspaceScaffold(
+      title: context.t('page.singleSong'),
+      child: AppWorkspaceLayout(
+        bands: (columns) {
+          final wide = columns == 3;
+          final details = _appearanceDetails(
+            _AppearanceOptionFields(
+              value: appearanceValue,
+              onChanged: updateAppearance,
+              maxColumns: wide ? 5 : 2,
+            ),
+            separate: wide,
+          );
+          final appearance = AppWorkspacePanel(
+            'appearance',
+            _AppearanceWorkbenchCard(
+              side: appearanceValue.side,
+              onSideChanged: (side) => updateAppearance(
+                appearanceValue.copyWith(side: side),
+                'side',
+                side,
+              ),
+              disclosure: PrettyDisclosureHeader(
+                title: context.t('appearance.more'),
+                icon: Icons.tune_rounded,
+                expanded: _appearanceExpanded,
+                progress: _appearanceHeight,
+                onTap: _toggleAppearance,
+              ),
+              details: wide ? null : details,
+            ),
+          );
+          return switch (columns) {
+            3 => [
+              AppWorkspaceBand([
+                input,
+                appearance,
+                save,
+              ], maxStretch: alignmentStretch),
+              AppWorkspaceBand([
+                AppWorkspacePanel('appearance-details', details, span: 3),
+              ], gapBefore: 0),
+              if (diagnostics == null)
+                AppWorkspaceBand([chart.across(2), resources])
+              else
+                AppWorkspaceBand.stacked([
+                  [chart.across(2), diagnostics.across(2)],
+                  [resources],
+                ], maxStretch: alignmentStretch),
+            ],
+            2 => [
+              AppWorkspaceBand([input, save], maxStretch: alignmentStretch),
+              if (diagnostics == null) ...[
+                AppWorkspaceBand([chart, resources]),
+                AppWorkspaceBand([appearance.across(2)]),
+              ] else
+                AppWorkspaceBand.stacked([
+                  [chart, appearance],
+                  [resources, diagnostics],
+                ], maxStretch: alignmentStretch),
+            ],
+            _ => [
+              for (final panel in [
+                input,
+                save,
+                chart,
+                resources,
+                appearance,
+                ?diagnostics,
+              ])
+                AppWorkspaceBand([panel]),
+            ],
+          };
+        },
+      ),
+    );
+  }
+
+  void _toggleAppearance() {
+    setState(() => _appearanceExpanded = !_appearanceExpanded);
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _appearanceReveal.value = _appearanceExpanded ? 1 : 0;
+    } else if (_appearanceExpanded) {
+      _appearanceReveal.forward();
+    } else {
+      _appearanceReveal.reverse();
+    }
+  }
+
+  Widget _appearanceDetails(Widget child, {required bool separate}) {
+    final inset = separate ? AppLayoutTokens.cardPadding : AppSpacing.sm;
+    final reveal = SizeTransition(
+      sizeFactor: _appearanceHeight,
+      alignment: Alignment.topCenter,
+      child: ExcludeFocus(
+        excluding: !_appearanceExpanded,
+        child: ExcludeSemantics(
+          excluding: !_appearanceExpanded,
+          child: IgnorePointer(
+            ignoring: !_appearanceExpanded,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                inset,
+                MediaQuery.textScalerOf(context).scale(inset),
+                inset,
+                inset,
+              ),
+              child: child,
             ),
           ),
         ),
       ),
     );
-  }
-
-  Future<void> _jumpToSaveSection() async {
-    final targetContext = _saveKey.currentContext;
-    if (targetContext != null) {
-      await Scrollable.ensureVisible(
-        targetContext,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOutCubic,
-        alignment: 0.18,
+    if (separate) {
+      // The optional band owns its animated gap. At zero height the other
+      // bands have exactly the same positions as if it were absent.
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizeTransition(
+            sizeFactor: _appearanceHeight,
+            alignment: Alignment.topCenter,
+            child: const SizedBox(height: AppLayoutTokens.gridGap),
+          ),
+          FadeTransition(
+            opacity: _appearanceFade,
+            child: WorkspaceSurface(
+              key: const ValueKey('single-appearance-shelf'),
+              child: reveal,
+            ),
+          ),
+        ],
       );
     }
-    if (!mounted) return;
-    setState(() => _saveHighlighted = true);
-    _highlightTimer?.cancel();
-    _highlightTimer = Timer(const Duration(milliseconds: 520), () {
-      if (mounted) setState(() => _saveHighlighted = false);
-    });
+    return FadeTransition(
+      opacity: _appearanceFade,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: context.colors.surfaceContainer,
+          borderRadius: BorderRadius.circular(AppRadius.workspaceInset),
+        ),
+        child: reveal,
+      ),
+    );
   }
 
   void _refresh() {
     if (mounted) setState(() {});
-  }
-}
-
-class _SingleHeader extends StatelessWidget {
-  const _SingleHeader();
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          context.t('app.title'),
-          style: Theme.of(context).textTheme.displaySmall?.copyWith(
-            color: PrettyColors.text,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 0,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          context.t('page.singleSong'),
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            color: PrettyColors.muted,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _ResponsiveDashboard extends StatelessWidget {
-  const _ResponsiveDashboard({
-    required this.left,
-    required this.right,
-    this.middle = const [],
-    this.enableThreeColumns = false,
-  });
-
-  final List<Widget> left;
-  final List<Widget> middle;
-  final List<Widget> right;
-  final bool enableThreeColumns;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final width = constraints.maxWidth;
-        final threeColumn =
-            enableThreeColumns &&
-            middle.isNotEmpty &&
-            width >= AppLayoutTokens.threeColumnBreakpoint;
-        final twoColumn = width >= AppLayoutTokens.twoColumnBreakpoint;
-        if (threeColumn) {
-          return AppWorkspaceLayout(left: left, middle: middle, right: right);
-        }
-        if (!twoColumn) {
-          return AppWorkspaceColumn(children: [...left, ...middle, ...right]);
-        }
-        return AppWorkspaceLayout(left: left, middle: middle, right: right);
-      },
-    );
   }
 }
 
@@ -210,9 +274,23 @@ class _InputWorkbenchCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final input = page.inputPath;
+    final scanning = page.phase == OperationPhase.scanning;
+    final scanFailed = page.phase == OperationPhase.failed && page.scan == null;
+    final phase = scanning || scanFailed
+        ? page.phase
+        : page.scan != null
+        ? OperationPhase.ready
+        : OperationPhase.idle;
     return PrettyCard(
       title: context.t('input'),
       icon: Icons.folder_open_rounded,
+      trailing: PrettyPill(
+        label: context.t(
+          phase == OperationPhase.ready ? 'convertible' : phase.i18nKey,
+        ),
+        icon: _phaseIcon(phase),
+        tone: _phaseTone(phase),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -220,7 +298,7 @@ class _InputWorkbenchCard extends StatelessWidget {
             spacing: 12,
             runSpacing: 12,
             children: [
-              PrettyGlassButton(
+              WorkspaceAction(
                 label: context.t('chooseZip'),
                 icon: Icons.description_rounded,
                 primary: true,
@@ -234,7 +312,7 @@ class _InputWorkbenchCard extends StatelessWidget {
                         action: state.pickSingleZip,
                       ),
               ),
-              PrettyGlassButton(
+              WorkspaceAction(
                 label: context.t('chooseFolder'),
                 icon: Icons.folder_rounded,
                 onPressed: busy
@@ -247,56 +325,42 @@ class _InputWorkbenchCard extends StatelessWidget {
                         action: state.pickSingleFolder,
                       ),
               ),
-              PrettyGlassButton(
-                label: context.t('scan'),
-                icon: Icons.refresh_rounded,
-                onPressed: busy || input == null
-                    ? null
-                    : () => safeAction(
-                        context,
-                        id: 'single.scan.start',
-                        label: context.t('rescan'),
-                        page: AppPageId.singleSong,
-                        action: state.rescanSingleSong,
-                      ),
-              ),
+              if (input != null)
+                WorkspaceAction(
+                  label: context.t('scan'),
+                  icon: Icons.refresh_rounded,
+                  onPressed: busy
+                      ? null
+                      : () => safeAction(
+                          context,
+                          id: 'single.scan.start',
+                          label: context.t('rescan'),
+                          page: AppPageId.singleSong,
+                          action: state.rescanSingleSong,
+                        ),
+                ),
             ],
           ),
-          const SizedBox(height: 18),
-          Text(
-            context.t('currentInput'),
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              color: PrettyColors.muted,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 10),
-          if (input == null)
-            DashedEmptyBox(
-              icon: Icons.folder_open_rounded,
-              title: context.t('single.input.emptyTitle'),
-              subtitle: context.t('single.input.emptySubtitle'),
-            )
-          else
+          if (input != null) ...[
+            const SizedBox(height: AppSpacing.sm),
             _SelectedInputBox(path: input, state: state),
-          const SizedBox(height: 8),
-          TextButton.icon(
-            onPressed: input == null
-                ? null
-                : () => safeAction(
-                    context,
-                    id: 'single.openLocation',
-                    label: context.t('openLocation'),
-                    page: AppPageId.singleSong,
-                    action: () => state.platform.openLocation.openLocation(
-                      FileSystemEntity.isDirectorySync(input)
-                          ? input
-                          : p.dirname(input),
-                    ),
-                  ),
-            icon: const Icon(Icons.folder_rounded, size: 18),
-            label: Text(context.t('openLocation')),
-          ),
+          ],
+          if (scanning) ...[
+            const SizedBox(height: AppSpacing.xs),
+            LinearProgressIndicator(
+              minHeight: 3,
+              semanticsLabel: context.t('phase.scanning'),
+            ),
+          ],
+          if (scanFailed) ...[
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              page.error ?? context.t('single.status.failedMessage'),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: context.colors.error),
+            ),
+          ],
         ],
       ),
     );
@@ -314,27 +378,31 @@ class _SelectedInputBox extends StatelessWidget {
     final name = path.startsWith('content://') ? path : p.basename(path);
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.xs,
+      ),
       decoration: BoxDecoration(
-        color: PrettyColors.primarySofter.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: PrettyColors.borderStrong),
+        color: context.colors.surfaceContainerHigh.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(AppRadius.workspaceInset),
+        border: Border.all(color: context.colors.outlineVariant),
       ),
       child: Row(
         children: [
           Container(
-            width: 44,
-            height: 44,
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(
-              color: PrettyColors.primarySoft,
-              borderRadius: BorderRadius.circular(16),
+              color: context.colors.primaryContainer,
+              borderRadius: BorderRadius.circular(AppRadius.workspaceInset),
             ),
-            child: const Icon(
+            child: Icon(
               Icons.insert_drive_file_rounded,
-              color: PrettyColors.primary,
+              color: context.colors.primary,
+              size: 20,
             ),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -344,121 +412,36 @@ class _SelectedInputBox extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: PrettyColors.text,
-                    fontWeight: FontWeight.w900,
+                    color: context.colors.onSurface,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  path,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: PrettyColors.muted),
+                Tooltip(
+                  message: path,
+                  child: Text(
+                    path,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: context.colors.onSurfaceVariant,
+                    ),
+                  ),
                 ),
               ],
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _StatusWorkbenchCard extends StatelessWidget {
-  const _StatusWorkbenchCard({
-    required this.page,
-    required this.busy,
-    required this.onContinue,
-  });
-
-  final SingleSongState page;
-  final bool busy;
-  final Future<void> Function()? onContinue;
-
-  @override
-  Widget build(BuildContext context) {
-    final tone = _phaseTone(page.phase);
-    final statusTitle = _statusTitle(context, page);
-    final statusDescription = _statusDescription(context, page);
-    return PrettyCard(
-      title: context.t('status'),
-      icon: Icons.info_outline_rounded,
-      trailing: PrettyPill(
-        label: context.t(page.phase.i18nKey),
-        icon: _phaseIcon(page.phase),
-        tone: tone,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 240),
-            child: Container(
-              key: ValueKey(page.phase),
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: _statusBoxColor(tone),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: _statusBorderColor(tone)),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    _phaseIcon(page.phase),
-                    color: _statusAccentColor(tone),
-                    size: 24,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      statusTitle,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        color: PrettyColors.text,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            statusDescription,
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(color: PrettyColors.muted),
-          ),
-          if (busy) ...[
-            const SizedBox(height: 14),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(999),
-              child: LinearProgressIndicator(
-                minHeight: 8,
-                backgroundColor: PrettyColors.primarySofter,
-                color: PrettyColors.primary,
-              ),
-            ),
-          ],
-          if (onContinue != null) ...[
-            const SizedBox(height: 12),
-            TextButton.icon(
+          if (Platform.isWindows)
+            IconButton(
+              tooltip: context.t('openLocation'),
               onPressed: () => safeAction(
                 context,
-                id: 'single.continue.save',
-                label: context.t('continue'),
+                id: 'single.openLocation',
+                label: context.t('openLocation'),
                 page: AppPageId.singleSong,
-                action: onContinue!,
+                action: () => state.platform.openLocation.openLocation(path),
               ),
-              icon: const Icon(Icons.south_rounded),
-              label: Text(context.t('continue')),
+              icon: const Icon(Icons.folder_open_rounded, size: 19),
             ),
-          ],
         ],
       ),
     );
@@ -480,6 +463,17 @@ class _SongChartInfoWorkbenchCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final edit = page.edit;
     final current = page.selectedChart;
+    if (page.scan == null) {
+      return PrettyCard(
+        title: context.t('songChartInfo'),
+        icon: Icons.edit_note_rounded,
+        child: WorkspaceEmptyState(
+          icon: Icons.library_music_outlined,
+          title: context.t('resource.waiting'),
+          subtitle: '',
+        ),
+      );
+    }
     if (edit == null || current == null) {
       return PrettyCard(
         title: context.t('songChartInfo'),
@@ -504,10 +498,16 @@ class _SongChartInfoWorkbenchCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _ChartSelectionPanel(state: state, page: page, onChanged: onChanged),
-          const SizedBox(height: 12),
+          if (edit.charts.length > 1) ...[
+            _ChartSelectionPanel(
+              state: state,
+              page: page,
+              onChanged: onChanged,
+            ),
+            const SizedBox(height: AppSpacing.xs),
+          ],
           _SongChartSummaryStrip(edit: edit, chart: current),
-          const SizedBox(height: 14),
+          const SizedBox(height: AppSpacing.sm),
           _FieldGrid(
             children: [
               _PrettyTextField(
@@ -530,8 +530,15 @@ class _SongChartInfoWorkbenchCard extends StatelessWidget {
                   onChanged();
                 },
               ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          _FieldGrid(
+            minWidth: 146,
+            maxColumns: 4,
+            children: [
               _PrettyTextField(
-                label: 'bpmText',
+                label: context.t('single.field.displayBpm'),
                 identity: edit,
                 value: edit.bpmText,
                 onChanged: (value) {
@@ -541,7 +548,7 @@ class _SongChartInfoWorkbenchCard extends StatelessWidget {
                 },
               ),
               _PrettyTextField(
-                label: 'baseBpm',
+                label: context.t('single.field.baseBpm'),
                 identity: edit,
                 value: edit.bpmBase,
                 onChanged: (value) {
@@ -551,7 +558,7 @@ class _SongChartInfoWorkbenchCard extends StatelessWidget {
                 },
               ),
               _PrettyTextField(
-                label: context.t('difficulty'),
+                label: context.t('field.difficulty'),
                 identity: current,
                 value: current.difficulty,
                 onChanged: (value) {
@@ -561,7 +568,7 @@ class _SongChartInfoWorkbenchCard extends StatelessWidget {
                 },
               ),
               _PrettyTextField(
-                label: context.t('chartConstant'),
+                label: context.t('single.field.chartConstant'),
                 identity: current,
                 value: current.chartConstant,
                 onChanged: (value) {
@@ -570,8 +577,13 @@ class _SongChartInfoWorkbenchCard extends StatelessWidget {
                   onChanged();
                 },
               ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          _FieldGrid(
+            children: [
               _PrettyTextField(
-                label: context.t('charter'),
+                label: context.t('field.charter'),
                 identity: current,
                 value: current.charter,
                 onChanged: (value) {
@@ -581,7 +593,7 @@ class _SongChartInfoWorkbenchCard extends StatelessWidget {
                 },
               ),
               _PrettyTextField(
-                label: context.t('illustrator'),
+                label: context.t('field.illustrator'),
                 identity: current,
                 value: current.illustrator,
                 onChanged: (value) {
@@ -592,25 +604,10 @@ class _SongChartInfoWorkbenchCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: AppSpacing.xs),
           _AdvancedEditorSection(
             title: context.t('advanced'),
             children: [
-              _MetricsGrid(
-                compact: true,
-                items: [
-                  _Metric('songId', edit.levelId),
-                  _Metric(context.t('selectedAff'), current.affName),
-                  _Metric(context.t('chartPath'), current.chartPath),
-                  _Metric(
-                    context.t('source'),
-                    sourceKindLabel(
-                      page.scan?.sourceKind ?? SingleSourceKind.unknown,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
               _FieldGrid(
                 children: [
                   _PrettyTextField(
@@ -633,21 +630,18 @@ class _SongChartInfoWorkbenchCard extends StatelessWidget {
                       onChanged();
                     },
                   ),
-                  _PrettyTextField(
-                    label: 'AFF',
-                    identity: current,
-                    value: current.affName ?? current.affPath ?? '-',
-                    enabled: false,
-                    onChanged: (_) {},
-                  ),
-                  _PrettyTextField(
-                    label: 'chartPath',
-                    identity: current,
-                    value: current.chartPath ?? '-',
-                    enabled: false,
-                    onChanged: (_) {},
-                  ),
                 ],
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              InfoRow(
+                label: context.t('source'),
+                value: sourceKindLabel(
+                  page.scan?.sourceKind ?? SingleSourceKind.unknown,
+                ),
+              ),
+              InfoRow(
+                label: context.t('chartPath'),
+                value: current.chartPath ?? current.affPath ?? '-',
               ),
             ],
           ),
@@ -692,101 +686,104 @@ class _SongChartSummaryStrip extends StatelessWidget {
 }
 
 class _AppearanceWorkbenchCard extends StatelessWidget {
-  const _AppearanceWorkbenchCard({required this.state, required this.page});
+  const _AppearanceWorkbenchCard({
+    required this.side,
+    required this.onSideChanged,
+    required this.disclosure,
+    required this.details,
+  });
 
-  final AppState state;
-  final SingleSongState page;
+  final String side;
+  final ValueChanged<String> onSideChanged;
+  final Widget disclosure;
+  final Widget? details;
 
   @override
   Widget build(BuildContext context) {
-    final value = page.appearanceOptions;
     return PrettyCard(
       title: context.t('appearance'),
       icon: Icons.auto_awesome_rounded,
-      compact: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _SideSegmentedControl(
             label: context.t('appearance.side'),
-            value: value.side,
-            onChanged: (side) =>
-                _update(context, value.copyWith(side: side), 'side', side),
+            value: side,
+            onChanged: onSideChanged,
           ),
-          const SizedBox(height: 14),
-          _FieldGrid(
-            minWidth: 180,
-            children: [
-              _AppearanceDropdown(
-                label: context.t('appearance.note'),
-                value: value.note,
-                choices: noteAppearanceChoices,
-                onChanged: (note) =>
-                    _update(context, value.copyWith(note: note), 'note', note),
-              ),
-              _AppearanceDropdown(
-                label: context.t('appearance.particle'),
-                value: value.particle,
-                choices: particleAppearanceChoices,
-                onChanged: (particle) => _update(
-                  context,
-                  value.copyWith(particle: particle),
-                  'particle',
-                  particle,
-                ),
-              ),
-              _AppearanceDropdown(
-                label: context.t('appearance.accent'),
-                value: value.accent,
-                choices: accentAppearanceChoices,
-                onChanged: (accent) => _update(
-                  context,
-                  value.copyWith(accent: accent),
-                  'accent',
-                  accent,
-                ),
-              ),
-              _AppearanceDropdown(
-                label: context.t('appearance.track'),
-                value: value.track,
-                choices: trackAppearanceChoices,
-                onChanged: (track) => _update(
-                  context,
-                  value.copyWith(track: track),
-                  'track',
-                  track,
-                ),
-              ),
-              _AppearanceDropdown(
-                label: context.t('appearance.singleLine'),
-                value: value.singleLine,
-                choices: singleLineAppearanceChoices,
-                onChanged: (singleLine) => _update(
-                  context,
-                  value.copyWith(singleLine: singleLine),
-                  'singleLine',
-                  singleLine,
-                ),
-              ),
-            ],
-          ),
+          const SizedBox(height: 8),
+          disclosure,
+          ?details,
         ],
       ),
     );
   }
+}
 
-  void _update(
-    BuildContext context,
+class _AppearanceOptionFields extends StatelessWidget {
+  const _AppearanceOptionFields({
+    required this.value,
+    required this.onChanged,
+    required this.maxColumns,
+  });
+
+  final ArcCreateAppearanceOptions value;
+  final void Function(
     ArcCreateAppearanceOptions next,
     String field,
-    String option,
-  ) {
-    safeAction(
-      context,
-      id: 'single.appearance.$field',
-      label: option,
-      page: AppPageId.singleSong,
-      action: () => state.updateSingleAppearance(next),
+    String value,
+  )
+  onChanged;
+  final int maxColumns;
+
+  @override
+  Widget build(BuildContext context) {
+    return _FieldGrid(
+      minWidth: 180,
+      maxColumns: maxColumns,
+      children: [
+        _AppearanceDropdown(
+          label: context.t('appearance.note'),
+          value: value.note,
+          choices: noteAppearanceChoices,
+          onChanged: (note) =>
+              onChanged(value.copyWith(note: note), 'note', note),
+        ),
+        _AppearanceDropdown(
+          label: context.t('appearance.particle'),
+          value: value.particle,
+          choices: particleAppearanceChoices,
+          onChanged: (particle) => onChanged(
+            value.copyWith(particle: particle),
+            'particle',
+            particle,
+          ),
+        ),
+        _AppearanceDropdown(
+          label: context.t('appearance.accent'),
+          value: value.accent,
+          choices: accentAppearanceChoices,
+          onChanged: (accent) =>
+              onChanged(value.copyWith(accent: accent), 'accent', accent),
+        ),
+        _AppearanceDropdown(
+          label: context.t('appearance.track'),
+          value: value.track,
+          choices: trackAppearanceChoices,
+          onChanged: (track) =>
+              onChanged(value.copyWith(track: track), 'track', track),
+        ),
+        _AppearanceDropdown(
+          label: context.t('appearance.singleLine'),
+          value: value.singleLine,
+          choices: singleLineAppearanceChoices,
+          onChanged: (singleLine) => onChanged(
+            value.copyWith(singleLine: singleLine),
+            'singleLine',
+            singleLine,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -809,125 +806,25 @@ class _SideSegmentedControl extends StatelessWidget {
         ? value
         : sideAppearanceChoices.first.value;
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          label,
-          style: Theme.of(context).textTheme.labelLarge?.copyWith(
-            color: PrettyColors.muted,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        const SizedBox(height: 8),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final compact = constraints.maxWidth < 360;
-            return Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final choice in sideAppearanceChoices)
-                  _SideChoiceButton(
-                    label: context.t(choice.labelKey),
-                    selected: selected == choice.value,
-                    compact: compact,
-                    onPressed: selected == choice.value
-                        ? null
-                        : () => onChanged(choice.value),
-                  ),
-              ],
-            );
+        Text(label, style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 7),
+        WorkspaceChoices<String>(
+          choices: [
+            for (final choice in sideAppearanceChoices)
+              WorkspaceChoice(
+                choice.value,
+                context.t('appearance.side.${choice.value.toLowerCase()}'),
+                tooltip: context.t(choice.labelKey),
+              ),
+          ],
+          value: selected,
+          onChanged: (next) {
+            if (next != selected) onChanged(next);
           },
         ),
       ],
-    );
-  }
-}
-
-class _SideChoiceButton extends StatelessWidget {
-  const _SideChoiceButton({
-    required this.label,
-    required this.selected,
-    required this.compact,
-    required this.onPressed,
-  });
-
-  final String label;
-  final bool selected;
-  final bool compact;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final foreground = selected ? Colors.white : PrettyColors.primaryDark;
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOutCubic,
-      constraints: BoxConstraints(minWidth: compact ? 96 : 120),
-      decoration: BoxDecoration(
-        color: selected
-            ? PrettyColors.primary
-            : PrettyColors.primarySofter.withValues(alpha: 0.56),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: selected ? PrettyColors.primary : PrettyColors.borderStrong,
-        ),
-        boxShadow: selected
-            ? [
-                BoxShadow(
-                  color: PrettyColors.primary.withValues(alpha: 0.24),
-                  blurRadius: 16,
-                  offset: const Offset(0, 8),
-                ),
-              ]
-            : null,
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(18),
-          onTap: onPressed,
-          child: Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: compact ? 12 : 16,
-              vertical: 11,
-            ),
-            child: Center(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: foreground,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _PreprocessWorkbenchCard extends StatelessWidget {
-  const _PreprocessWorkbenchCard({required this.state, required this.page});
-
-  final AppState state;
-  final SingleSongState page;
-
-  @override
-  Widget build(BuildContext context) {
-    return PrettyCard(
-      title: context.t('preprocess'),
-      icon: Icons.tune_rounded,
-      compact: true,
-      child: PreprocessOptionsPanel(
-        value: page.preprocessOptions,
-        onChanged: state.updateSinglePreprocess,
-        pageId: AppPageId.singleSong,
-        actionPrefix: 'single.preprocess',
-      ),
     );
   }
 }
@@ -952,24 +849,8 @@ class _AppearanceDropdown extends StatelessWidget {
           ? value
           : choices.first.value,
       isExpanded: true,
-      decoration: InputDecoration(
-        labelText: label,
-        filled: true,
-        fillColor: PrettyColors.primarySofter.withValues(alpha: 0.48),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: PrettyColors.border),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: PrettyColors.border),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: PrettyColors.primary),
-        ),
-      ),
-      borderRadius: BorderRadius.circular(16),
+      decoration: InputDecoration(labelText: label),
+      borderRadius: BorderRadius.circular(AppRadius.workspaceControl),
       items: [
         for (final choice in choices)
           DropdownMenuItem<String>(
@@ -1001,18 +882,30 @@ class _ResourcePreviewWorkbenchCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final scan = page.scan;
     final effective = page.effectiveResources;
+    if (scan == null) {
+      return PrettyCard(
+        title: context.t('resources'),
+        icon: Icons.image_outlined,
+        child: WorkspaceEmptyState(
+          icon: Icons.perm_media_outlined,
+          title: context.t('resource.waiting'),
+          subtitle: '',
+        ),
+      );
+    }
     return PrettyCard(
       title: context.t('resources'),
       icon: Icons.image_rounded,
       child: LayoutBuilder(
         builder: (context, constraints) {
           final width = SafeLayout.widthFromConstraints(constraints, context);
-          final columns = width >= 760 ? 3 : (width >= 430 ? 2 : 1);
-          const gap = 12.0;
-          final itemWidth = ((width - gap * (columns - 1)) / columns).clamp(
-            168.0,
-            360.0,
-          );
+          final columns =
+              width >= 314 && MediaQuery.textScalerOf(context).scale(14) <= 17
+              ? 2
+              : 1;
+          const gap = AppSpacing.xs;
+          final itemWidth = (width - gap * (columns - 1)) / columns;
+          final previewHeight = (itemWidth * 0.52).clamp(90.0, 144.0);
           final resources = [
             _ResourceSpec(
               id: 'audio',
@@ -1042,9 +935,6 @@ class _ResourcePreviewWorkbenchCard extends StatelessWidget {
               scan: scan,
               sourceKey: effective.backgroundSourceKey,
               missingReference: effective.missingBackgroundReference,
-              warning: effective.warnings.isEmpty
-                  ? null
-                  : effective.warnings.join('\n'),
               actionLabel: effective.missingBackgroundReference == null
                   ? null
                   : context.t('resource.selectExternalBackground'),
@@ -1062,16 +952,32 @@ class _ResourcePreviewWorkbenchCard extends StatelessWidget {
               sourceKey: effective.songlistSourceKey,
             ),
           ];
-          return Wrap(
-            spacing: gap,
-            runSpacing: gap,
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              for (final resource in resources)
-                SizedBox(
-                  width: itemWidth,
-                  height: 262,
-                  child: _ResourceTile(spec: resource),
-                ),
+              _ResourceTile(
+                spec: resources.first,
+                previewHeight: previewHeight,
+              ),
+              const SizedBox(height: gap),
+              Wrap(
+                spacing: gap,
+                runSpacing: gap,
+                children: [
+                  for (final resource in resources.where(
+                    (item) => item.kind == _ResourceKind.image,
+                  ))
+                    SizedBox(
+                      width: itemWidth,
+                      child: _ResourceTile(
+                        spec: resource,
+                        previewHeight: previewHeight,
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: gap),
+              _SonglistResourceRow(spec: resources.last),
             ],
           );
         },
@@ -1092,7 +998,6 @@ class _ResourceSpec {
     required this.scan,
     this.sourceKey = 'resource.default',
     this.missingReference,
-    this.warning,
     this.actionLabel,
     this.onAction,
     this.onAudioConvert,
@@ -1106,7 +1011,6 @@ class _ResourceSpec {
   final SingleSongScanResult? scan;
   final String sourceKey;
   final String? missingReference;
-  final String? warning;
   final String? actionLabel;
   final VoidCallback? onAction;
   final AudioConversionCallback? onAudioConvert;
@@ -1115,9 +1019,10 @@ class _ResourceSpec {
 }
 
 class _ResourceTile extends StatelessWidget {
-  const _ResourceTile({required this.spec});
+  const _ResourceTile({required this.spec, required this.previewHeight});
 
   final _ResourceSpec spec;
+  final double previewHeight;
 
   @override
   Widget build(BuildContext context) {
@@ -1125,123 +1030,160 @@ class _ResourceTile extends StatelessWidget {
     final file = resource?.path == null ? null : File(resource!.path!);
     final exists = file != null && file.existsSync();
     final hasResource = resource != null;
+    final audio = spec.kind == _ResourceKind.audio;
     final hasMissingReference = spec.missingReference?.isNotEmpty == true;
     return Hero(
       tag: spec.heroTag,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(AppRadius.workspaceInset),
           onTap: hasResource
               ? () => _showResourceDetails(context, spec, resource)
               : null,
           child: Ink(
             decoration: BoxDecoration(
-              color: PrettyColors.panelSoft,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: PrettyColors.border),
+              color: context.colors.surfaceContainer,
+              borderRadius: BorderRadius.circular(AppRadius.workspaceInset),
+              border: Border.all(color: context.colors.outlineVariant),
             ),
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(10),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    Icon(spec.icon, color: PrettyColors.text, size: 20),
+                    Icon(spec.icon, color: context.colors.onSurface, size: 20),
                     const SizedBox(width: 8),
                     Expanded(
+                      flex: 3,
                       child: Text(
                         spec.label,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          color: PrettyColors.text,
+                          color: context.colors.onSurface,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
                     ),
-                    PrettyPill(
-                      label: hasResource
-                          ? _resourceStatusLabel(context, resource)
-                          : hasMissingReference
-                          ? context.t('resource.missingBgReference')
-                          : context.t('resource.missing'),
-                      tone: hasResource
-                          ? (resource.source == 'fallback'
+                    if (audio && hasResource) ...[
+                      Flexible(
+                        flex: 2,
+                        child: Align(
+                          alignment: AlignmentDirectional.centerEnd,
+                          child: Text(
+                            context.t(spec.sourceKey),
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: context.colors.onSurfaceVariant,
+                                ),
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: context.t('resource.details'),
+                        onPressed: () =>
+                            _showResourceDetails(context, spec, resource),
+                        icon: const Icon(Icons.open_in_full_rounded, size: 18),
+                      ),
+                    ] else
+                      Flexible(
+                        flex: 2,
+                        child: Align(
+                          alignment: AlignmentDirectional.centerEnd,
+                          child: PrettyPill(
+                            label: hasResource
+                                ? _resourceStatusLabel(context, resource)
+                                : hasMissingReference
+                                ? context.t('resource.missingBgReference')
+                                : context.t('resource.missing'),
+                            tone: hasResource
+                                ? (resource.source == 'fallback'
+                                      ? PrettyPillTone.warning
+                                      : PrettyPillTone.primary)
+                                : hasMissingReference
                                 ? PrettyPillTone.warning
-                                : PrettyPillTone.primary)
-                          : hasMissingReference
-                          ? PrettyPillTone.warning
-                          : PrettyPillTone.neutral,
-                    ),
+                                : PrettyPillTone.neutral,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                Expanded(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: _ResourcePreviewBody(
-                      spec: spec,
-                      resource: resource,
-                      file: file,
-                      exists: exists,
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(
+                    AppRadius.workspaceControl,
+                  ),
+                  child: ColoredBox(
+                    color: context.colors.surfaceContainerHigh,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minWidth: double.infinity,
+                        minHeight: audio
+                            ? (hasResource ? 0 : 64)
+                            : previewHeight,
+                      ),
+                      child: _ResourcePreviewBody(
+                        spec: spec,
+                        resource: resource,
+                        file: file,
+                        exists: exists,
+                        previewHeight: previewHeight,
+                      ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 10),
-                PrettyPill(
-                  label: context.t(spec.sourceKey),
-                  tone: hasMissingReference
-                      ? PrettyPillTone.warning
-                      : PrettyPillTone.neutral,
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  resource?.name ??
-                      spec.missingReference ??
-                      context.t('resource.waiting'),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: PrettyColors.muted),
-                ),
-                SizedBox(
-                  height: 34,
-                  child: spec.onAction == null
-                      ? TextButton.icon(
-                          style: TextButton.styleFrom(
-                            padding: EdgeInsets.zero,
-                            visualDensity: VisualDensity.compact,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          ),
-                          onPressed: hasResource
-                              ? () => _showResourceDetails(
-                                  context,
-                                  spec,
-                                  resource,
-                                )
-                              : null,
-                          icon: const Icon(
-                            Icons.info_outline_rounded,
-                            size: 17,
-                          ),
-                          label: Text(context.t('resource.details')),
-                        )
-                      : TextButton.icon(
-                          style: TextButton.styleFrom(
-                            padding: EdgeInsets.zero,
-                            visualDensity: VisualDensity.compact,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          ),
-                          onPressed: spec.onAction,
-                          icon: const Icon(
-                            Icons.add_photo_alternate_rounded,
-                            size: 17,
-                          ),
-                          label: Text(spec.actionLabel!),
+                if (!audio && (hasResource || hasMissingReference)) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              resource?.name ??
+                                  resource?.path ??
+                                  spec.missingReference ??
+                                  '-',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.labelLarge,
+                            ),
+                            Text(
+                              context.t(spec.sourceKey),
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: context.colors.onSurfaceVariant,
+                                  ),
+                            ),
+                          ],
                         ),
-                ),
+                      ),
+                      if (hasResource)
+                        IconButton(
+                          tooltip: context.t('resource.details'),
+                          onPressed: () =>
+                              _showResourceDetails(context, spec, resource),
+                          icon: const Icon(
+                            Icons.open_in_full_rounded,
+                            size: 18,
+                          ),
+                        ),
+                    ],
+                  ),
+                  if (spec.onAction != null)
+                    TextButton.icon(
+                      onPressed: spec.onAction,
+                      icon: const Icon(
+                        Icons.add_photo_alternate_outlined,
+                        size: 18,
+                      ),
+                      label: Text(spec.actionLabel!),
+                    ),
+                ],
               ],
             ),
           ),
@@ -1257,12 +1199,14 @@ class _ResourcePreviewBody extends StatelessWidget {
     required this.resource,
     required this.file,
     required this.exists,
+    required this.previewHeight,
   });
 
   final _ResourceSpec spec;
   final ResourceInfo? resource;
   final File? file;
   final bool exists;
+  final double previewHeight;
 
   @override
   Widget build(BuildContext context) {
@@ -1276,7 +1220,8 @@ class _ResourcePreviewBody extends StatelessWidget {
         exists
             ? Image.file(
                 file!,
-                fit: BoxFit.cover,
+                height: previewHeight,
+                fit: BoxFit.contain,
                 errorBuilder: (context, error, stackTrace) => _FileMiniPreview(
                   icon: spec.icon,
                   title: current.name ?? context.t('previewFailed'),
@@ -1292,9 +1237,10 @@ class _ResourcePreviewBody extends StatelessWidget {
         resource: current,
         onConvert: spec.onAudioConvert,
       ),
-      _ResourceKind.songlist => _SonglistMiniPreview(
-        resource: current,
-        scan: spec.scan,
+      _ResourceKind.songlist => _FileMiniPreview(
+        icon: spec.icon,
+        title: spec.label,
+        subtitle: context.t(spec.sourceKey),
       ),
     };
   }
@@ -1310,16 +1256,18 @@ class _MissingBackgroundPreview extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF4DD).withValues(alpha: 0.72),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: PrettyColors.warning.withValues(alpha: 0.42)),
+        color: context.semanticColors.warningContainer,
+        borderRadius: BorderRadius.circular(AppRadius.workspaceInset),
+        border: Border.all(
+          color: context.semanticColors.warning.withValues(alpha: 0.42),
+        ),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(
+          Icon(
             Icons.image_not_supported_rounded,
-            color: PrettyColors.warning,
+            color: context.semanticColors.onWarningContainer,
             size: 28,
           ),
           const SizedBox(height: 8),
@@ -1328,7 +1276,7 @@ class _MissingBackgroundPreview extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: PrettyColors.text,
+              color: context.colors.onSurface,
               fontWeight: FontWeight.w900,
             ),
           ),
@@ -1338,9 +1286,9 @@ class _MissingBackgroundPreview extends StatelessWidget {
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: PrettyColors.muted),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: context.colors.onSurfaceVariant,
+            ),
           ),
         ],
       ),
@@ -1358,24 +1306,24 @@ class _WaitingResource extends StatelessWidget {
     return Container(
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: PrettyColors.primarySofter.withValues(alpha: 0.34),
-        borderRadius: BorderRadius.circular(16),
+        color: context.colors.surfaceContainerHigh.withValues(alpha: 0.34),
+        borderRadius: BorderRadius.circular(AppRadius.workspaceInset),
         border: Border.all(
-          color: PrettyColors.borderStrong,
+          color: context.colors.outlineVariant,
           style: BorderStyle.solid,
         ),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: PrettyColors.faint, size: 24),
+          Icon(icon, color: context.colors.onSurfaceVariant, size: 24),
           const SizedBox(height: 5),
           Text(
             context.t('resource.waiting'),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: PrettyColors.muted,
+              color: context.colors.onSurfaceVariant,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -1399,22 +1347,22 @@ class _FileMiniPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: PrettyColors.primarySofter.withValues(alpha: 0.44),
-        borderRadius: BorderRadius.circular(16),
+        color: context.colors.surfaceContainerHigh.withValues(alpha: 0.44),
+        borderRadius: BorderRadius.circular(AppRadius.workspaceInset),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, color: PrettyColors.primary, size: 28),
+          Icon(icon, color: context.colors.primary, size: 28),
           const SizedBox(height: 8),
           Text(
             title,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: PrettyColors.text,
+              color: context.colors.onSurface,
               fontWeight: FontWeight.w800,
             ),
           ),
@@ -1423,9 +1371,9 @@ class _FileMiniPreview extends StatelessWidget {
             subtitle,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: PrettyColors.muted),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: context.colors.onSurfaceVariant,
+            ),
           ),
         ],
       ),
@@ -1449,64 +1397,46 @@ class _AudioMiniPreview extends StatelessWidget {
   }
 }
 
-class _SonglistMiniPreview extends StatelessWidget {
-  const _SonglistMiniPreview({required this.resource, required this.scan});
+class _SonglistResourceRow extends StatelessWidget {
+  const _SonglistResourceRow({required this.spec});
 
-  final ResourceInfo resource;
-  final SingleSongScanResult? scan;
+  final _ResourceSpec spec;
 
   @override
   Widget build(BuildContext context) {
-    final lines = <String>[
-      if (scan?.songId?.isNotEmpty ?? false) scan!.songId!,
-      if (scan?.title?.isNotEmpty ?? false) scan!.title!,
-      '${context.t('chartCount')}: ${scan?.charts.length ?? 0}',
-      sourceKindLabel(scan?.sourceKind ?? SingleSourceKind.unknown),
-    ];
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: PrettyColors.primarySofter.withValues(alpha: 0.44),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.description_rounded,
-                color: PrettyColors.primary,
-                size: 22,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  resource.source == 'fallback'
-                      ? context.t('resource.fallback')
-                      : (resource.name ?? context.t('songlist')),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: PrettyColors.primaryDark,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-            ],
+    final resource = spec.resource;
+    return Hero(
+      tag: spec.heroTag,
+      child: Material(
+        color: context.colors.surfaceContainer,
+        shape: RoundedSuperellipseBorder(
+          borderRadius: BorderRadius.circular(AppRadius.workspaceInset),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: ListTile(
+          dense: true,
+          leading: Icon(spec.icon, size: 20),
+          title: Text(
+            spec.label,
+            style: Theme.of(context).textTheme.titleSmall,
           ),
-          const SizedBox(height: 8),
-          for (final line in lines.take(3))
-            Text(
-              line,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: PrettyColors.muted),
-            ),
-        ],
+          subtitle: Text(
+            resource == null
+                ? context.t('resource.missing')
+                : context.t(spec.sourceKey),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: resource == null
+              ? null
+              : Tooltip(
+                  message: context.t('resource.details'),
+                  child: const Icon(Icons.open_in_full_rounded, size: 18),
+                ),
+          onTap: resource == null
+              ? null
+              : () => _showResourceDetails(context, spec, resource),
+        ),
       ),
     );
   }
@@ -1534,14 +1464,8 @@ String _resourceStatusLabel(BuildContext context, ResourceInfo? resource) {
   return context.t('resource.identified');
 }
 
-String _fileFormat(String? value) {
-  if (value == null || value.trim().isEmpty) return '-';
-  final extension = p.extension(value).replaceFirst('.', '').toUpperCase();
-  return extension.isEmpty ? '-' : extension;
-}
-
-class _AffMappingWorkbenchCard extends StatelessWidget {
-  const _AffMappingWorkbenchCard({required this.scan});
+class _AffMappingSection extends StatelessWidget {
+  const _AffMappingSection({required this.scan});
 
   final SingleSongScanResult? scan;
 
@@ -1550,72 +1474,19 @@ class _AffMappingWorkbenchCard extends StatelessWidget {
     final files = scan?.affFiles ?? const <AffInfo>[];
     final adopted = files.where((aff) => aff.adopted).length;
     final ignored = files.length - adopted;
-    return PrettyCard(
+    return PrettyExpandableSection(
       title: context.t('affMapping'),
       icon: Icons.link_rounded,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: _AffCount(
-                  label: context.t('adoptedAff'),
-                  value: adopted,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _AffCount(
-                  label: context.t('ignoredAff'),
-                  value: ignored,
-                ),
-              ),
-            ],
-          ),
-          if (files.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            for (final aff in files.take(6)) _AffLine(aff: aff, scan: scan),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _AffCount extends StatelessWidget {
-  const _AffCount({required this.label, required this.value});
-
-  final String label;
-  final int value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: PrettyColors.primarySofter.withValues(alpha: 0.52),
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: Theme.of(
-              context,
-            ).textTheme.labelMedium?.copyWith(color: PrettyColors.muted),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '$value',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              color: PrettyColors.text,
-              fontWeight: FontWeight.w900,
+      subtitle:
+          '${context.t('adoptedAff')} $adopted · ${context.t('ignoredAff')} $ignored',
+      child: files.isEmpty
+          ? Text(context.t('diagnosticsUnavailable'))
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final aff in files.take(6)) _AffLine(aff: aff, scan: scan),
+              ],
             ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -1663,339 +1534,236 @@ class _SaveWorkbenchCard extends StatelessWidget {
     required this.state,
     required this.page,
     required this.busy,
-    required this.highlighted,
-    super.key,
   });
 
   final AppState state;
   final SingleSongState page;
   final bool busy;
-  final bool highlighted;
 
   @override
   Widget build(BuildContext context) {
     final hasScan = page.scan != null && page.edit != null;
     final canSave = hasScan && _hasAdoptedChart(page);
-    final saved = page.saveResult != null;
+    final saving = page.phase == OperationPhase.saving;
     final failed = page.phase == OperationPhase.failed && hasScan;
-    final outputPath = page.saveResult?.outputPath;
-    final outputName = outputPath == null || outputPath.isEmpty
+    final output = page.saveResult?.outputPath;
+    final outputPath = output == null || output.isEmpty ? null : output;
+    final filename = outputPath == null
         ? _suggestedOutput(page.edit, page.scan)
         : p.basename(outputPath);
-    final outputDir = outputPath == null || outputPath.isEmpty
-        ? page.lastSaveDirectory
-        : p.dirname(outputPath);
-    final outputSize =
-        page.saveResult?.sizeBytes ??
-        (outputPath == null || outputPath.isEmpty
-            ? null
-            : _fileLength(outputPath));
-
-    return AnimatedScale(
-      duration: const Duration(milliseconds: 220),
-      scale: highlighted ? 1.012 : 1,
-      child: Stack(
+    return PrettyCard(
+      title: context.t('saveAndExport'),
+      icon: Icons.download_rounded,
+      trailing: failed || outputPath != null
+          ? PrettyPill(
+              label: context.t(failed ? 'saveFailed' : 'saveComplete'),
+              icon: failed ? Icons.error_outline_rounded : Icons.check_rounded,
+              tone: failed ? PrettyPillTone.danger : PrettyPillTone.success,
+            )
+          : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          PrettyCard(
-            title: context.t('saveAndExport'),
-            icon: Icons.download_rounded,
-            emphasized: highlighted,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          if (outputPath != null)
+            _SingleExportFile(
+              name: filename,
+              path: outputPath,
+              size: page.saveResult?.sizeBytes ?? _fileLength(outputPath),
+              onOpen: Platform.isWindows
+                  ? () => _openOutput(context, outputPath)
+                  : null,
+            )
+          else if (canSave)
+            Row(
               children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 220),
-                  curve: Curves.easeOutCubic,
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: saved
-                        ? const Color(0xFFEAF8F1)
-                        : failed
-                        ? const Color(0xFFFFEEF3)
-                        : PrettyColors.primarySofter.withValues(alpha: 0.62),
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(
-                      color: saved
-                          ? PrettyColors.success.withValues(alpha: 0.35)
-                          : failed
-                          ? PrettyColors.danger.withValues(alpha: 0.28)
-                          : PrettyColors.border,
-                    ),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(
-                        saved
-                            ? Icons.check_circle_rounded
-                            : failed
-                            ? Icons.error_rounded
-                            : Icons.download_done_rounded,
-                        color: saved
-                            ? PrettyColors.success
-                            : failed
-                            ? PrettyColors.danger
-                            : PrettyColors.primary,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              saved
-                                  ? context.t('saveComplete')
-                                  : failed
-                                  ? context.t('saveFailed')
-                                  : canSave
-                                  ? context.t('readyToSave')
-                                  : hasScan
-                                  ? context.t('noChartSelected')
-                                  : context.t('saveUnavailable'),
-                              style: Theme.of(context).textTheme.titleSmall
-                                  ?.copyWith(
-                                    color: PrettyColors.text,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              failed
-                                  ? (page.error ?? context.t('saveFailed'))
-                                  : canSave
-                                  ? context.t('saveHint')
-                                  : hasScan
-                                  ? context.t('chartSelectionHint')
-                                  : context.t('saveDisabledHint'),
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(color: PrettyColors.muted),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                Icon(
+                  Icons.inventory_2_outlined,
+                  size: 18,
+                  color: context.colors.onSurfaceVariant,
                 ),
-                const SizedBox(height: 14),
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: PrettyColors.panelSoft,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: PrettyColors.border),
+                const SizedBox(width: AppSpacing.xs),
+                Expanded(
+                  child: Text(
+                    filename,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleSmall,
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 42,
-                            height: 42,
-                            decoration: BoxDecoration(
-                              color: PrettyColors.primarySoft,
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: const Icon(
-                              Icons.inventory_2_rounded,
-                              color: PrettyColors.primary,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  outputName,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(context).textTheme.titleSmall
-                                      ?.copyWith(
-                                        color: PrettyColors.text,
-                                        fontWeight: FontWeight.w900,
-                                      ),
-                                ),
-                                const SizedBox(height: 3),
-                                Text(
-                                  outputSize == null
-                                      ? context.t('sizePending')
-                                      : _formatBytes(outputSize),
-                                  style: Theme.of(context).textTheme.bodySmall
-                                      ?.copyWith(color: PrettyColors.muted),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        context.t('outputLocation'),
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: PrettyColors.muted,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          color: PrettyColors.primarySofter.withValues(
-                            alpha: 0.5,
-                          ),
-                          borderRadius: BorderRadius.circular(13),
-                          border: Border.all(color: PrettyColors.border),
-                        ),
-                        child: Text(
-                          outputPath ?? outputDir ?? '-',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(
-                                color: PrettyColors.muted,
-                                fontWeight: FontWeight.w700,
-                              ),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          OutlinedButton.icon(
-                            onPressed: outputPath == null
-                                ? null
-                                : () => safeAction(
-                                    context,
-                                    id: 'single.save.copyPath',
-                                    label: outputPath,
-                                    page: AppPageId.singleSong,
-                                    action: () async {
-                                      await Clipboard.setData(
-                                        ClipboardData(text: outputPath),
-                                      );
-                                      if (!context.mounted) return;
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            context.t('pathCopied'),
-                                          ),
-                                          behavior: SnackBarBehavior.floating,
-                                          duration: const Duration(
-                                            milliseconds: 1400,
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                            icon: const Icon(Icons.copy_rounded, size: 18),
-                            label: Text(context.t('copyPath')),
-                          ),
-                          OutlinedButton.icon(
-                            onPressed: outputPath == null || !Platform.isWindows
-                                ? null
-                                : () => safeAction(
-                                    context,
-                                    id: 'single.save.openFolder',
-                                    label: outputPath,
-                                    page: AppPageId.singleSong,
-                                    action: () async {
-                                      final ok = await state
-                                          .platform
-                                          .openLocation
-                                          .openLocation(outputPath);
-                                      if (!context.mounted || ok) return;
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            context.t('openLocationFailed'),
-                                          ),
-                                          behavior: SnackBarBehavior.floating,
-                                        ),
-                                      );
-                                    },
-                                  ),
-                            icon: const Icon(
-                              Icons.folder_open_rounded,
-                              size: 18,
-                            ),
-                            label: Text(context.t('openFolder')),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: PrettyColors.primary,
-                      foregroundColor: Colors.white,
-                      disabledBackgroundColor: PrettyColors.primarySoft,
-                      disabledForegroundColor: PrettyColors.faint,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                    ),
-                    onPressed: busy || !canSave
-                        ? null
-                        : () => safeAction(
-                            context,
-                            id: 'single.save.start',
-                            label: context.t('saveArcpkg'),
-                            page: AppPageId.singleSong,
-                            action: state.saveSingleSong,
-                          ),
-                    icon: Icon(
-                      saved ? Icons.sync_rounded : Icons.save_alt_rounded,
-                    ),
-                    label: Text(
-                      saved
-                          ? context.t('exportAgain')
-                          : context.t('saveArcpkg'),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  saved
-                      ? context.t('saveAgainHint')
-                      : context.t('saveOverwriteHint'),
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: PrettyColors.muted),
                 ),
               ],
+            )
+          else
+            Text(
+              context.t(hasScan ? 'noChartSelected' : 'saveDisabledHint'),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: context.colors.onSurfaceVariant,
+              ),
             ),
-          ),
-          Positioned.fill(
-            child: IgnorePointer(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(PrettyRadii.card),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  curve: Curves.easeOutCubic,
-                  color: highlighted
-                      ? Colors.black.withValues(alpha: 0.16)
-                      : Colors.transparent,
+          if (failed) ...[
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              page.error ?? context.t('saveFailed'),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: context.colors.error),
+            ),
+          ],
+          const SizedBox(height: AppSpacing.sm),
+          WorkspaceExportActions(
+            preprocess: PreprocessOptionsPanel(
+              value: page.preprocessOptions,
+              onChanged: state.updateSinglePreprocess,
+              pageId: AppPageId.singleSong,
+              actionPrefix: 'single.preprocess',
+              enabled: !busy,
+            ),
+            save: FilledButton.icon(
+              onPressed: busy || !canSave
+                  ? null
+                  : () => safeAction(
+                      context,
+                      id: 'single.save.start',
+                      label: context.t('saveArcpkg'),
+                      page: AppPageId.singleSong,
+                      action: state.saveSingleSong,
+                    ),
+              icon: saving
+                  ? const SizedBox.square(
+                      dimension: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Icon(
+                      outputPath != null
+                          ? Icons.sync_rounded
+                          : Icons.save_alt_rounded,
+                    ),
+              label: Text(
+                context.t(
+                  saving
+                      ? 'phase.saving'
+                      : outputPath == null
+                      ? 'saveArcpkg'
+                      : 'exportAgain',
                 ),
               ),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  void _openOutput(BuildContext context, String outputPath) {
+    safeAction(
+      context,
+      id: 'single.save.openFolder',
+      label: outputPath,
+      page: AppPageId.singleSong,
+      action: () async {
+        final ok = await state.platform.openLocation.openLocation(outputPath);
+        if (!context.mounted || ok) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(context.t('openLocationFailed')),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _SingleExportFile extends StatelessWidget {
+  const _SingleExportFile({
+    required this.name,
+    required this.path,
+    required this.size,
+    this.onOpen,
+  });
+
+  final String name;
+  final String path;
+  final int? size;
+  final VoidCallback? onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Icon(
+          Icons.inventory_2_outlined,
+          size: 20,
+          color: context.colors.primary,
+        ),
+        const SizedBox(width: AppSpacing.xs),
+        Expanded(
+          child: Tooltip(
+            message: path,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleSmall,
+                      ),
+                    ),
+                    if (size != null) ...[
+                      const SizedBox(width: AppSpacing.xs),
+                      Text(
+                        _formatBytes(size),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: context.colors.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                Text(
+                  path,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: context.colors.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        IconButton(
+          tooltip: context.t('copyPath'),
+          icon: const Icon(Icons.content_copy_rounded, size: 18),
+          onPressed: () => safeAction(
+            context,
+            id: 'single.save.copyPath',
+            label: path,
+            page: AppPageId.singleSong,
+            action: () async {
+              await Clipboard.setData(ClipboardData(text: path));
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(context.t('pathCopied')),
+                  behavior: SnackBarBehavior.floating,
+                  duration: const Duration(milliseconds: 1400),
+                ),
+              );
+            },
+          ),
+        ),
+        if (onOpen != null)
+          IconButton(
+            tooltip: context.t('openFolder'),
+            icon: const Icon(Icons.folder_open_rounded, size: 19),
+            onPressed: onOpen,
+          ),
+      ],
     );
   }
 }
@@ -2036,39 +1804,14 @@ class _ChartSelectionPanel extends StatelessWidget {
     if (charts.isEmpty) {
       return PrettyPill(label: context.t('notSelected'));
     }
-    if (charts.length == 1) {
-      return Wrap(
-        spacing: 10,
-        runSpacing: 8,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          PrettyPill(
-            label: _chartChipLabel(charts.single),
-            icon: Icons.check_rounded,
-            tone: PrettyPillTone.primary,
-          ),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 360),
-            child: Text(
-              context.t('singleChartHint'),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: PrettyColors.muted),
-            ),
-          ),
-        ],
-      );
-    }
 
     final selectedCount = charts.where((chart) => chart.adopted).length;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: PrettyColors.primarySofter.withValues(alpha: 0.38),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: PrettyColors.border),
+        color: context.colors.surfaceContainerHigh.withValues(alpha: 0.38),
+        borderRadius: BorderRadius.circular(AppRadius.workspaceInset),
+        border: Border.all(color: context.colors.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2083,7 +1826,7 @@ class _ChartSelectionPanel extends StatelessWidget {
                 child: Text(
                   '${context.t('selectCharts')} ($selectedCount / ${charts.length})',
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: PrettyColors.text,
+                    color: context.colors.onSurface,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
@@ -2129,9 +1872,9 @@ class _ChartSelectionPanel extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             context.t('chartSelectionHint'),
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: PrettyColors.muted),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: context.colors.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 12),
           for (var index = 0; index < charts.length; index++) ...[
@@ -2170,11 +1913,11 @@ class _ChartSelectionRow extends StatelessWidget {
     final selected = page.selectedChartIndex == index;
     return Material(
       color: selected
-          ? PrettyColors.primarySoft.withValues(alpha: 0.58)
-          : PrettyColors.panel,
-      borderRadius: BorderRadius.circular(14),
+          ? context.colors.primaryContainer.withValues(alpha: 0.58)
+          : context.colors.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(AppRadius.workspaceControl),
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.workspaceControl),
         onTap: () => safeAction(
           context,
           id: 'single.chart.select',
@@ -2214,7 +1957,7 @@ class _ChartSelectionRow extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: PrettyColors.text,
+                  color: context.colors.onSurface,
                   fontWeight: FontWeight.w800,
                 ),
               );
@@ -2222,9 +1965,9 @@ class _ChartSelectionRow extends StatelessWidget {
                 '${context.t('notesCount')}: ${_notesCountForChart(page.scan, chart)}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: PrettyColors.muted),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: context.colors.onSurfaceVariant,
+                ),
               );
               final status = PrettyPill(
                 label: chart.adopted
@@ -2287,30 +2030,35 @@ class _DiagnosticsWorkbenchCard extends StatelessWidget {
       icon: Icons.fact_check_rounded,
       child: Column(
         children: [
+          _AffMappingSection(scan: page.scan),
           PrettyExpandableSection(
             title: context.t('missingFields'),
             icon: Icons.rule_rounded,
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: SelectableText(
-                page.scanDiagnostics.isEmpty
-                    ? context.t('diagnosticsUnavailable')
-                    : page.scanDiagnostics.join('\n'),
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SelectableText(
+                  page.scanDiagnostics.isEmpty
+                      ? context.t('diagnosticsUnavailable')
+                      : page.scanDiagnostics.join('\n'),
+                ),
+                if (page.scanRawJsonPath != null)
+                  InfoRow(
+                    label: context.t('rawScanJson'),
+                    value: page.scanRawJsonPath!,
+                  ),
+                if (page.scanDiagnosticsPath != null)
+                  InfoRow(
+                    label: context.t('scanDiagnosticsPath'),
+                    value: page.scanDiagnosticsPath!,
+                  ),
+              ],
             ),
           ),
           PrettyExpandableSection(
             title: context.t('logs'),
             icon: Icons.article_rounded,
             child: LogPanel(logs: page.logs),
-          ),
-          InfoRow(
-            label: context.t('rawScanJson'),
-            value: page.scanRawJsonPath ?? '-',
-          ),
-          InfoRow(
-            label: context.t('scanDiagnosticsPath'),
-            value: page.scanDiagnosticsPath ?? '-',
           ),
         ],
       ),
@@ -2361,8 +2109,8 @@ class _MetricTile extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(compact ? 10 : 13),
       decoration: BoxDecoration(
-        color: PrettyColors.panelSoft,
-        borderRadius: BorderRadius.circular(16),
+        color: context.colors.surfaceContainer,
+        borderRadius: BorderRadius.circular(AppRadius.workspaceInset),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2372,7 +2120,7 @@ class _MetricTile extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: PrettyColors.muted,
+              color: context.colors.onSurfaceVariant,
               fontWeight: FontWeight.w800,
             ),
           ),
@@ -2381,7 +2129,7 @@ class _MetricTile extends StatelessWidget {
             _orDash(metric.value),
             maxLines: 2,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: PrettyColors.text,
+              color: context.colors.onSurface,
               fontWeight: FontWeight.w800,
             ),
           ),
@@ -2399,21 +2147,32 @@ class _Metric {
 }
 
 class _FieldGrid extends StatelessWidget {
-  const _FieldGrid({required this.children, this.minWidth = 190});
+  const _FieldGrid({
+    required this.children,
+    this.minWidth = 184,
+    this.maxColumns = 2,
+  });
 
   final List<Widget> children;
   final double minWidth;
+  final int maxColumns;
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = SafeLayout.widthFromConstraints(constraints, context);
-        final columns = width >= 640 ? 2 : 1;
-        const gap = 10.0;
-        final itemWidth = ((width - gap * (columns - 1)) / columns)
-            .clamp(math.min(minWidth, width), 620.0)
-            .toDouble();
+        const gap = AppSpacing.xs;
+        final nominalWidth =
+            minWidth *
+            math.max(1, MediaQuery.textScalerOf(context).scale(14) / 14);
+        final fitting = ((width + gap) / (nominalWidth + gap)).floor();
+        final columns = fitting >= maxColumns
+            ? maxColumns
+            : fitting >= 2
+            ? 2
+            : 1;
+        final itemWidth = (width - gap * (columns - 1)) / columns;
         return Wrap(
           spacing: gap,
           runSpacing: gap,
@@ -2433,14 +2192,12 @@ class _PrettyTextField extends StatelessWidget {
     required this.value,
     required this.onChanged,
     this.identity,
-    this.enabled = true,
   });
 
   final String label;
   final String value;
   final ValueChanged<String> onChanged;
   final Object? identity;
-  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
@@ -2449,32 +2206,8 @@ class _PrettyTextField extends StatelessWidget {
         '$label-${identity == null ? 'default' : identityHashCode(identity)}',
       ),
       initialValue: value,
-      enabled: enabled,
       decoration: InputDecoration(labelText: label),
       onChanged: onChanged,
-    );
-  }
-}
-
-class _FadeIn extends StatelessWidget {
-  const _FadeIn({required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0, end: 1),
-      duration: const Duration(milliseconds: 280),
-      curve: Curves.easeOutCubic,
-      builder: (context, value, child) => Opacity(
-        opacity: value,
-        child: Transform.translate(
-          offset: Offset(0, (1 - value) * 10),
-          child: child,
-        ),
-      ),
-      child: child,
     );
   }
 }
@@ -2484,228 +2217,33 @@ void _showResourceDetails(
   _ResourceSpec spec,
   ResourceInfo resource,
 ) {
-  Navigator.of(context).push(
-    PageRouteBuilder<void>(
-      opaque: false,
-      barrierDismissible: true,
-      barrierColor: Colors.black.withValues(alpha: 0.22),
-      transitionDuration: const Duration(milliseconds: 360),
-      reverseTransitionDuration: const Duration(milliseconds: 260),
-      pageBuilder: (context, animation, secondaryAnimation) {
-        return _ResourceDetailOverlay(spec: spec, resource: resource);
-      },
-      transitionsBuilder: (context, animation, secondaryAnimation, child) {
-        final curved = CurvedAnimation(
-          parent: animation,
-          curve: Curves.easeOutCubic,
-          reverseCurve: Curves.easeInCubic,
-        );
-        return FadeTransition(
-          opacity: curved,
-          child: ScaleTransition(
-            scale: Tween<double>(begin: 0.985, end: 1).animate(curved),
-            child: child,
-          ),
-        );
-      },
-    ),
-  );
-}
-
-class _ResourceDetailOverlay extends StatelessWidget {
-  const _ResourceDetailOverlay({required this.spec, required this.resource});
-
-  final _ResourceSpec spec;
-  final ResourceInfo resource;
-
-  @override
-  Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
-    return Material(
-      color: Colors.transparent,
-      child: SafeArea(
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => Navigator.of(context).pop(),
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: math.min(920.0, size.width - 48),
-                  maxHeight: math.max(260.0, size.height - 48),
-                ),
-                child: Hero(
-                  tag: spec.heroTag,
-                  child: Material(
-                    color: Colors.transparent,
-                    child: GestureDetector(
-                      onTap: () {},
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: PrettyColors.panel,
-                          borderRadius: BorderRadius.circular(28),
-                          border: Border.all(color: PrettyColors.borderStrong),
-                          boxShadow: [
-                            BoxShadow(
-                              color: PrettyColors.primary.withValues(
-                                alpha: 0.22,
-                              ),
-                              blurRadius: 50,
-                              offset: const Offset(0, 24),
-                            ),
-                          ],
-                        ),
-                        padding: const EdgeInsets.all(22),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(
-                                  spec.icon,
-                                  color: PrettyColors.primary,
-                                  size: 24,
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    spec.label,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleLarge
-                                        ?.copyWith(
-                                          color: PrettyColors.text,
-                                          fontWeight: FontWeight.w900,
-                                        ),
-                                  ),
-                                ),
-                                PrettyPill(
-                                  label: _resourceStatusLabel(
-                                    context,
-                                    resource,
-                                  ),
-                                  tone: resource.source == 'fallback'
-                                      ? PrettyPillTone.warning
-                                      : PrettyPillTone.primary,
-                                ),
-                                const SizedBox(width: 8),
-                                IconButton(
-                                  tooltip: context.t('resource.closeDetails'),
-                                  onPressed: () => Navigator.of(context).pop(),
-                                  icon: const Icon(Icons.close_rounded),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            Flexible(
-                              child: SingleChildScrollView(
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: [
-                                    _ResourceDetailPreview(
-                                      spec: spec,
-                                      resource: resource,
-                                    ),
-                                    const SizedBox(height: 16),
-                                    _ResourceDetailInfo(resource: resource),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ResourceDetailPreview extends StatelessWidget {
-  const _ResourceDetailPreview({required this.spec, required this.resource});
-
-  final _ResourceSpec spec;
-  final ResourceInfo resource;
-
-  @override
-  Widget build(BuildContext context) {
-    final file = resource.path == null ? null : File(resource.path!);
-    final exists = file != null && file.existsSync();
-    return switch (spec.kind) {
-      _ResourceKind.image => ClipRRect(
-        borderRadius: BorderRadius.circular(22),
-        child: Container(
-          constraints: const BoxConstraints(maxHeight: 460),
-          color: PrettyColors.primarySofter.withValues(alpha: 0.42),
-          child: exists
-              ? Image.file(
-                  file,
-                  fit: BoxFit.contain,
-                  errorBuilder: (context, error, stackTrace) =>
-                      _LargeEmptyPreview(
-                        icon: spec.icon,
-                        label: context.t('previewFailed'),
-                      ),
-                )
-              : _LargeEmptyPreview(
-                  icon: spec.icon,
-                  label: context.t('previewFailed'),
-                ),
-        ),
-      ),
-      _ResourceKind.audio => SizedBox(
-        height: 240,
-        child: AudioPreviewPanel(
-          resource: resource,
-          onConvertToCompatibleOgg: spec.onAudioConvert,
-        ),
+  showResourceDetailOverlay(
+    context,
+    heroTag: spec.heroTag,
+    title: spec.label,
+    icon: spec.icon,
+    kind: switch (spec.kind) {
+      _ResourceKind.image => ResourceDetailKind.image,
+      _ResourceKind.audio => ResourceDetailKind.audio,
+      _ResourceKind.songlist => ResourceDetailKind.document,
+    },
+    resource: resource,
+    statusLabel: _resourceStatusLabel(context, resource),
+    statusTone: resource.source == 'fallback'
+        ? PrettyPillTone.warning
+        : PrettyPillTone.primary,
+    preview: switch (spec.kind) {
+      _ResourceKind.audio => AudioPreviewPanel(
+        resource: resource,
+        onConvertToCompatibleOgg: spec.onAudioConvert,
       ),
       _ResourceKind.songlist => _SonglistDetailPreview(
         resource: resource,
         scan: spec.scan,
       ),
-    };
-  }
-}
-
-class _LargeEmptyPreview extends StatelessWidget {
-  const _LargeEmptyPreview({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 260,
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 42, color: PrettyColors.faint),
-            const SizedBox(height: 10),
-            Text(
-              label,
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: PrettyColors.muted),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+      _ResourceKind.image => null,
+    },
+  );
 }
 
 class _SonglistDetailPreview extends StatelessWidget {
@@ -2741,9 +2279,9 @@ class _SonglistDetailPreview extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: PrettyColors.primarySofter.withValues(alpha: 0.52),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: PrettyColors.border),
+        color: context.colors.surfaceContainerHigh.withValues(alpha: 0.52),
+        borderRadius: BorderRadius.circular(AppRadius.workspaceInset),
+        border: Border.all(color: context.colors.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2751,7 +2289,7 @@ class _SonglistDetailPreview extends StatelessWidget {
           Text(
             context.t('resource.structurePreview'),
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: PrettyColors.primaryDark,
+              color: context.colors.onPrimaryContainer,
               fontWeight: FontWeight.w900,
             ),
           ),
@@ -2766,36 +2304,6 @@ class _SonglistDetailPreview extends StatelessWidget {
           ],
         ],
       ),
-    );
-  }
-}
-
-class _ResourceDetailInfo extends StatelessWidget {
-  const _ResourceDetailInfo({required this.resource});
-
-  final ResourceInfo resource;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        InfoRow(label: context.t('source'), value: resource.source ?? '-'),
-        InfoRow(
-          label: context.t('size'),
-          value: _formatBytes(resource.sizeBytes),
-        ),
-        InfoRow(
-          label: context.t('resource.format'),
-          value: _fileFormat(resource.name ?? resource.path),
-        ),
-        if (resource.width != null || resource.height != null)
-          InfoRow(
-            label: context.t('dimensions'),
-            value: '${resource.width ?? '-'} x ${resource.height ?? '-'}',
-          ),
-        InfoRow(label: context.t('detailsPath'), value: resource.path ?? '-'),
-      ],
     );
   }
 }
@@ -2826,54 +2334,6 @@ IconData _phaseIcon(OperationPhase phase) => switch (phase) {
   OperationPhase.scanning || OperationPhase.saving => Icons.sync_rounded,
   OperationPhase.idle => Icons.hourglass_empty_rounded,
 };
-
-Color _statusBoxColor(PrettyPillTone tone) => switch (tone) {
-  PrettyPillTone.success => const Color(0xFFEAF8F2),
-  PrettyPillTone.warning => const Color(0xFFFFF7E8),
-  PrettyPillTone.danger => const Color(0xFFFFEEF3),
-  PrettyPillTone.primary => PrettyColors.primarySofter,
-  PrettyPillTone.neutral => PrettyColors.panelSoft,
-};
-
-Color _statusBorderColor(PrettyPillTone tone) => switch (tone) {
-  PrettyPillTone.success => PrettyColors.success.withValues(alpha: 0.22),
-  PrettyPillTone.warning => PrettyColors.warning.withValues(alpha: 0.24),
-  PrettyPillTone.danger => PrettyColors.danger.withValues(alpha: 0.24),
-  PrettyPillTone.primary => PrettyColors.borderStrong,
-  PrettyPillTone.neutral => PrettyColors.border,
-};
-
-Color _statusAccentColor(PrettyPillTone tone) => switch (tone) {
-  PrettyPillTone.success => PrettyColors.success,
-  PrettyPillTone.warning => PrettyColors.warning,
-  PrettyPillTone.danger => PrettyColors.danger,
-  PrettyPillTone.primary => PrettyColors.primary,
-  PrettyPillTone.neutral => PrettyColors.faint,
-};
-
-String _statusTitle(BuildContext context, SingleSongState page) {
-  return switch (page.phase) {
-    OperationPhase.idle => context.t('phase.idle'),
-    OperationPhase.scanning => context.t('scan'),
-    OperationPhase.scanned || OperationPhase.ready => context.t('convertible'),
-    OperationPhase.saving => context.t('saveArcpkg'),
-    OperationPhase.saved => context.t('saveComplete'),
-    OperationPhase.failed => page.error ?? context.t('scanFailed'),
-  };
-}
-
-String _statusDescription(BuildContext context, SingleSongState page) {
-  return switch (page.phase) {
-    OperationPhase.idle => context.t('single.status.idleMessage'),
-    OperationPhase.scanning => context.t('scan'),
-    OperationPhase.scanned ||
-    OperationPhase.ready => context.t('single.status.readyMessage'),
-    OperationPhase.saving => context.t('single.status.savingMessage'),
-    OperationPhase.saved => context.t('single.status.savedMessage'),
-    OperationPhase.failed =>
-      page.error ?? context.t('single.status.failedMessage'),
-  };
-}
 
 ChartMetadata? _findChartForAff(SingleSongScanResult? scan, AffInfo aff) {
   final charts = scan?.charts ?? const <ChartMetadata>[];

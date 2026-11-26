@@ -124,13 +124,13 @@ bool EnableAcrylicBackdrop(HWND window) {
     return false;
   }
 
-  // Windows Fluent acrylic. The color is ABGR: alpha + pale Etoile blue tint.
+  // Windows Fluent acrylic. The ABGR tint matches the neutral workspace.
   // This is intentionally not a layered/transparent-window hack; it asks DWM
   // for a blurred backdrop and keeps Flutter content readable above it.
   AccentPolicy accent = {
       kAccentEnableAcrylicBlurBehind,
       0,
-      static_cast<int>(0x98FFF7EE),
+      static_cast<int>(0x98F1EDF0),
       0,
   };
   WindowCompositionAttributeData data = {
@@ -185,11 +185,11 @@ void ApplyCaptionColors(HWND window, bool dark) {
   // non-client area toward EtoileBridge's Acrylic surface. This avoids the
   // hard default-gray titlebar cut while preserving system window behavior.
   const COLORREF caption_color =
-      dark ? RGB(22, 32, 42) : RGB(242, 250, 254);
+      dark ? RGB(25, 25, 30) : RGB(237, 236, 239);
   const COLORREF border_color =
-      dark ? RGB(48, 80, 96) : RGB(200, 235, 248);
+      dark ? RGB(58, 57, 67) : RGB(215, 213, 222);
   const COLORREF text_color =
-      dark ? RGB(238, 248, 252) : RGB(16, 32, 48);
+      dark ? RGB(236, 235, 243) : RGB(27, 28, 35);
 
   DwmSetWindowAttribute(window, DWMWA_CAPTION_COLOR, &caption_color,
                         sizeof(caption_color));

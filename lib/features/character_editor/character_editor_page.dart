@@ -5,14 +5,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 
+import '../../app/app_spacing.dart';
 import '../../app/app_state.dart';
 import '../../app/routes.dart';
 import '../../app/safe_action.dart';
+import '../../app/theme.dart';
 import '../../core/i18n/app_strings.dart';
 import '../../core/models/character_models.dart';
 import '../../core/models/operation_models.dart';
 import '../../core/models/single_song_models.dart';
 import '../../shared/widgets/info_row.dart';
+import '../../shared/widgets/app_motion.dart';
 import '../../shared/widgets/log_panel.dart';
 import '../../shared/widgets/pretty_ui.dart';
 import '../../shared/widgets/resource_detail_overlay.dart';
@@ -31,134 +34,81 @@ class CharacterEditorPage extends StatelessWidget {
     final busy =
         page.phase == OperationPhase.scanning ||
         page.phase == OperationPhase.saving;
-
-    return SingleChildScrollView(
-      padding: _pagePadding(context),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(
-            maxWidth: AppLayoutTokens.pageContentMaxWidth,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _CharacterHeroHeader(page: page),
-              const SizedBox(height: 24),
-              _CharacterWorkbenchLayout(
-                left: [
-                  _CharacterInputCard(state: state, page: page, busy: busy),
-                  _CharacterSaveCard(state: state, page: page, busy: busy),
-                  _CharacterDiagnosticsCard(page: page),
-                ],
-                middle: [
-                  _CharacterMetadataCard(state: state, page: page),
-                  if (page.hasPreviewImage) _CharacterImageCard(page: page),
-                ],
-                right: [
-                  _CharacterResultPreviewCard(state: state, page: page),
-                  if (page.hasPreviewImage)
-                    _CharacterIconCropCard(state: state, page: page),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
+    final input = AppWorkspacePanel(
+      'input',
+      _CharacterInputCard(state: state, page: page, busy: busy),
     );
-  }
-}
-
-class _CharacterHeroHeader extends StatelessWidget {
-  const _CharacterHeroHeader({required this.page});
-
-  final CharacterEditorState page;
-
-  @override
-  Widget build(BuildContext context) {
-    final pills = page.scan != null || page.phase == OperationPhase.saved
-        ? Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            alignment: WrapAlignment.end,
-            children: [
-              PrettyPill(
-                icon: Icons.person_rounded,
-                label: page.edit?.identifier ?? page.scan?.identifier ?? '-',
-                tone: PrettyPillTone.primary,
-              ),
-              PrettyPill(
-                icon: _phaseIcon(page.phase),
-                label: context.t(page.phase.i18nKey),
-                tone: _phaseTone(page.phase),
-              ),
-            ],
+    final save = AppWorkspacePanel(
+      'save',
+      _CharacterSaveCard(state: state, page: page, busy: busy),
+    );
+    final metadata = AppWorkspacePanel(
+      'metadata',
+      _CharacterMetadataCard(state: state, page: page),
+    );
+    final result = AppWorkspacePanel(
+      'result',
+      _CharacterResultPreviewCard(state: state, page: page),
+    );
+    final diagnostics = AppWorkspacePanel(
+      'diagnostics',
+      _CharacterDiagnosticsCard(page: page),
+    );
+    final portrait = page.hasPreviewImage
+        ? AppWorkspacePanel('portrait', _CharacterImageCard(page: page))
+        : null;
+    final crop = page.hasPreviewImage
+        ? AppWorkspacePanel(
+            'crop',
+            _CharacterIconCropCard(state: state, page: page),
           )
         : null;
-    final title = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          context.t('app.title'),
-          style: Theme.of(context).textTheme.displaySmall?.copyWith(
-            fontWeight: FontWeight.w900,
-            color: PrettyColors.text,
-            letterSpacing: 0,
+
+    return AppWorkspaceScaffold(
+      title: context.t('page.characterEditor'),
+      actions: [
+        if (page.scan != null || page.phase == OperationPhase.saved) ...[
+          PrettyPill(
+            icon: Icons.person_rounded,
+            label: page.edit?.identifier ?? page.scan?.identifier ?? '-',
+            tone: PrettyPillTone.primary,
           ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          context.t('page.characterEditor'),
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            color: PrettyColors.muted,
-            fontWeight: FontWeight.w700,
+          PrettyPill(
+            icon: _phaseIcon(page.phase),
+            label: context.t(page.phase.i18nKey),
+            tone: _phaseTone(page.phase),
           ),
-        ),
+        ],
       ],
-    );
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        if (constraints.maxWidth < 560) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              title,
-              if (pills != null) ...[const SizedBox(height: 12), pills],
-            ],
-          );
-        }
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(child: title),
-            if (pills != null)
-              Flexible(
-                child: Align(alignment: Alignment.topRight, child: pills),
-              ),
+      child: AppWorkspaceLayout(
+        bands: (columns) => switch (columns) {
+          3 => [
+            AppWorkspaceBand([input, save, diagnostics]),
+            AppWorkspaceBand([metadata, result.across(2)], matchHeight: false),
+            if (portrait != null && crop != null)
+              AppWorkspaceBand([portrait, crop.across(2)], matchHeight: false),
           ],
-        );
-      },
-    );
-  }
-}
-
-class _CharacterWorkbenchLayout extends StatelessWidget {
-  const _CharacterWorkbenchLayout({
-    required this.left,
-    required this.middle,
-    required this.right,
-  });
-
-  final List<Widget> left;
-  final List<Widget> middle;
-  final List<Widget> right;
-
-  @override
-  Widget build(BuildContext context) {
-    return AppWorkspaceLayout(
-      left: left,
-      middle: middle,
-      right: right,
-      mediumOrder: AppWorkspaceMediumOrder.rightThenMiddle,
+          2 => [
+            AppWorkspaceBand([input, save]),
+            AppWorkspaceBand([metadata, result], matchHeight: false),
+            if (portrait != null && crop != null)
+              AppWorkspaceBand([portrait, crop], matchHeight: false),
+            AppWorkspaceBand([diagnostics.across(2)]),
+          ],
+          _ => [
+            for (final panel in [
+              input,
+              save,
+              metadata,
+              result,
+              ?portrait,
+              ?crop,
+              diagnostics,
+            ])
+              AppWorkspaceBand([panel]),
+          ],
+        },
+      ),
     );
   }
 }
@@ -192,7 +142,7 @@ class _CharacterInputCard extends StatelessWidget {
             spacing: 10,
             runSpacing: 10,
             children: [
-              PrettyGlassButton(
+              WorkspaceAction(
                 label: context.t('chooseImage'),
                 icon: Icons.image_rounded,
                 primary: true,
@@ -206,7 +156,7 @@ class _CharacterInputCard extends StatelessWidget {
                         action: state.pickCharacterImage,
                       ),
               ),
-              PrettyGlassButton(
+              WorkspaceAction(
                 label: context.t('chooseArcpkg'),
                 icon: Icons.inventory_2_rounded,
                 onPressed: busy
@@ -237,11 +187,10 @@ class _CharacterInputCard extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           if (inputPath == null || inputPath.isEmpty)
-            DashedEmptyBox(
+            WorkspaceEmptyState(
               icon: Icons.person_search_rounded,
               title: context.t('notSelected'),
               subtitle: context.t('characterInputEmptyHint'),
-              minHeight: 132,
             )
           else
             _CurrentInputPanel(page: page),
@@ -270,7 +219,7 @@ class _CharacterInputCard extends StatelessWidget {
             Text(
               page.lastError!,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: PrettyColors.danger,
+                color: context.colors.error,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -295,9 +244,9 @@ class _CurrentInputPanel extends StatelessWidget {
         color: Theme.of(
           context,
         ).colorScheme.primaryContainer.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(AppRadius.workspaceInset),
         border: Border.all(
-          color: PrettyColors.borderStrong.withValues(alpha: 0.36),
+          color: context.colors.outlineVariant.withValues(alpha: 0.36),
         ),
       ),
       child: Row(
@@ -306,14 +255,14 @@ class _CurrentInputPanel extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: PrettyColors.primarySoft,
-              borderRadius: BorderRadius.circular(15),
+              color: context.colors.primaryContainer,
+              borderRadius: BorderRadius.circular(AppRadius.workspaceControl),
             ),
             child: Icon(
               page.scan?.sourceKind == CharacterInputKind.arcpkg
                   ? Icons.inventory_2_rounded
                   : Icons.image_rounded,
-              color: PrettyColors.primary,
+              color: context.colors.primary,
             ),
           ),
           const SizedBox(width: 12),
@@ -334,9 +283,9 @@ class _CurrentInputPanel extends StatelessWidget {
                   path,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: PrettyColors.muted),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: context.colors.onSurfaceVariant,
+                  ),
                 ),
               ],
             ),
@@ -613,7 +562,13 @@ class _CharacterResultPreviewCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ArcCreateResultPreviewCanvas(page: page),
+          Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 860),
+              child: ArcCreateResultPreviewCanvas(page: page),
+            ),
+          ),
           const SizedBox(height: 14),
           if (hasImage) ...[
             _CharacterMetricRow(page: page),
@@ -832,37 +787,43 @@ class _CharacterIconCropCard extends StatelessWidget {
       icon: Icons.crop_rounded,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final wide = constraints.maxWidth >= 640;
-          final editor = _InteractiveIconCropEditor(state: state, page: page);
-          final controls = _IconCropControls(
-            state: state,
-            page: page,
-            onUpdate: _updateCrop,
-          );
-          final preview = _IconPreviewPanel(page: page);
-          if (!wide) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                editor,
-                const SizedBox(height: 14),
-                controls,
-                const SizedBox(height: 14),
-                preview,
-              ],
-            );
-          }
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          final width = constraints.maxWidth;
+          final wide = width >= 454;
+          const previewWidth = 164.0;
+          const gap = 16.0;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(flex: 7, child: editor),
-              const SizedBox(width: 18),
-              Expanded(
-                flex: 4,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [preview, const SizedBox(height: 14), controls],
-                ),
+              Flex(
+                direction: wide ? Axis.horizontal : Axis.vertical,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: wide ? width - previewWidth - gap : width,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 368),
+                      child: Align(
+                        alignment: Alignment.topCenter,
+                        heightFactor: 1,
+                        child: _InteractiveIconCropEditor(
+                          state: state,
+                          page: page,
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: wide ? gap : 0, height: wide ? 0 : gap),
+                  SizedBox(
+                    width: wide ? previewWidth : width,
+                    child: _IconPreviewPanel(page: page),
+                  ),
+                ],
+              ),
+              const SizedBox(height: gap),
+              _IconCropControls(
+                state: state,
+                page: page,
+                onUpdate: _updateCrop,
               ),
             ],
           );
@@ -979,16 +940,16 @@ class _IconCropControls extends StatelessWidget {
         const SizedBox(height: 10),
         Text(
           context.t('iconCrop.saveHint'),
-          style: Theme.of(
-            context,
-          ).textTheme.bodySmall?.copyWith(color: PrettyColors.muted),
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: context.colors.onSurfaceVariant,
+          ),
         ),
         if (page.iconError != null) ...[
           const SizedBox(height: 8),
           Text(
             page.iconError!,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: PrettyColors.danger,
+              color: context.colors.error,
               fontWeight: FontWeight.w800,
             ),
           ),
@@ -1023,7 +984,7 @@ class _InteractiveIconCropEditorState
     return AspectRatio(
       aspectRatio: aspectRatio,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(AppRadius.workspaceInset),
         child: LayoutBuilder(
           builder: (context, constraints) {
             final size = Size(constraints.maxWidth, constraints.maxHeight);
@@ -1077,7 +1038,9 @@ class _InteractiveIconCropEditorState
                             color: Theme.of(context).colorScheme.primary,
                             width: 2,
                           ),
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(
+                            AppRadius.workspaceControl,
+                          ),
                         ),
                         child: Stack(
                           children: const [
@@ -1190,7 +1153,12 @@ class _CropOverlayPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final outer = Path()..addRect(Offset.zero & size);
     final inner = Path()
-      ..addRRect(RRect.fromRectAndRadius(rect, const Radius.circular(14)));
+      ..addRRect(
+        RRect.fromRectAndRadius(
+          rect,
+          const Radius.circular(AppRadius.workspaceControl),
+        ),
+      );
     final dim = Paint()..color = Colors.black.withValues(alpha: 0.18);
     canvas.drawPath(Path.combine(PathOperation.difference, outer, inner), dim);
     final thirds = Paint()
@@ -1246,15 +1214,14 @@ class _IconPreviewPanel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
+        Wrap(
+          spacing: 8,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            Expanded(
-              child: Text(
-                context.t('iconPreview'),
-                style: Theme.of(
-                  context,
-                ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900),
-              ),
+            Text(
+              context.t('iconPreview'),
+              style: Theme.of(context).textTheme.titleSmall,
             ),
             PrettyPill(label: statusLabel, tone: statusTone),
           ],
@@ -1264,7 +1231,7 @@ class _IconPreviewPanel extends StatelessWidget {
           child: Material(
             color: Colors.transparent,
             child: InkWell(
-              borderRadius: BorderRadius.circular(24),
+              borderRadius: BorderRadius.circular(AppRadius.workspaceInset),
               onTap: () => showResourceDetailOverlay(
                 context,
                 heroTag: 'character-icon-preview',
@@ -1298,7 +1265,7 @@ class _IconPreviewPanel extends StatelessWidget {
               ),
               child: _IconPreviewSquare(
                 page: page,
-                dimension: 168,
+                dimension: 128,
                 heroTag: 'character-icon-preview',
               ),
             ),
@@ -1336,31 +1303,24 @@ class _IconPreviewSquare extends StatelessWidget {
     final appliedFile = appliedIconPath == null ? null : File(appliedIconPath);
     final sourceFile = page.imagePath == null ? null : File(page.imagePath!);
     final image = page.scan?.image;
-    final key = ValueKey(
-      [
-        page.iconPath,
-        page.iconCropDirty,
-        page.cropCenterX.toStringAsFixed(4),
-        page.cropCenterY.toStringAsFixed(4),
-        page.cropSize.toStringAsFixed(4),
-        _fileStamp(appliedFile),
-      ].join(':'),
-    );
+    final applied = appliedFile?.existsSync() == true;
+    final key = applied
+        ? ValueKey((appliedIconPath, page.generatedIcon, page.scan?.icon))
+        : ValueKey(('draft', page.imagePath));
     Widget content = SizedBox.square(
       dimension: dimension,
       child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 180),
-        switchInCurve: Curves.easeOutCubic,
-        switchOutCurve: Curves.easeInCubic,
+        duration: AppMotion.duration(context, AppMotion.reveal),
+        switchInCurve: AppMotion.enter,
         child: ClipRRect(
           key: key,
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(AppRadius.workspaceInset),
           child: Stack(
             fit: StackFit.expand,
             children: [
               _CheckerBackground(),
-              if (appliedFile != null && appliedFile.existsSync())
-                _MemoryFileImage(file: appliedFile)
+              if (applied)
+                _MemoryFileImage(file: appliedFile!)
               else if (sourceFile != null && sourceFile.existsSync())
                 _LiveIconCropPreview(
                   sourceFile: sourceFile,
@@ -1384,23 +1344,42 @@ class _IconPreviewSquare extends StatelessWidget {
   }
 }
 
-class _MemoryFileImage extends StatelessWidget {
+class _MemoryFileImage extends StatefulWidget {
   const _MemoryFileImage({required this.file});
 
   final File file;
 
   @override
-  Widget build(BuildContext context) {
-    try {
-      return Image.memory(
-        file.readAsBytesSync(),
-        fit: BoxFit.contain,
-        filterQuality: FilterQuality.medium,
-      );
-    } catch (_) {
-      return _PreviewPlaceholder(label: context.t('previewFailed'));
-    }
-  }
+  State<_MemoryFileImage> createState() => _MemoryFileImageState();
+}
+
+class _MemoryFileImageState extends State<_MemoryFileImage> {
+  late final _bytes = widget.file.readAsBytes();
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder(
+    future: _bytes,
+    builder: (context, snapshot) {
+      final bytes = snapshot.data;
+      if (bytes != null) {
+        return Image.memory(
+          bytes,
+          fit: BoxFit.contain,
+          filterQuality: FilterQuality.medium,
+          errorBuilder: (_, _, _) =>
+              _PreviewPlaceholder(label: context.t('previewFailed')),
+        );
+      }
+      return snapshot.hasError
+          ? _PreviewPlaceholder(label: context.t('previewFailed'))
+          : const Center(
+              child: SizedBox.square(
+                dimension: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            );
+    },
+  );
 }
 
 class _LiveIconCropPreview extends StatelessWidget {
@@ -1501,18 +1480,15 @@ class _CharacterSaveCard extends StatelessWidget {
           if (result != null)
             _CharacterSaveResultPanel(result: result, state: state)
           else if (failed)
-            Text(
-              page.lastError!,
-              style: const TextStyle(color: PrettyColors.danger),
-            )
+            Text(page.lastError!, style: TextStyle(color: context.colors.error))
           else
             Text(
               canSave
                   ? page.edit?.outputFileName ?? context.t('saveArcpkg')
                   : context.t('character.saveDisabledHint'),
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: PrettyColors.muted),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: context.colors.onSurfaceVariant,
+              ),
             ),
           const SizedBox(height: 14),
           FilledButton.icon(
@@ -1555,14 +1531,14 @@ class _CharacterSaveResultPanel extends StatelessWidget {
         color: Theme.of(
           context,
         ).colorScheme.primaryContainer.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(AppRadius.workspaceInset),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.person_rounded, color: PrettyColors.primary),
+              Icon(Icons.person_rounded, color: context.colors.primary),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
@@ -1627,7 +1603,6 @@ class _CharacterDiagnosticsCard extends StatelessWidget {
     return PrettyCard(
       title: context.t('logs'),
       icon: Icons.article_rounded,
-      compact: true,
       trailing: PrettyPill(
         label: '${warnings.length} ${context.t('warningCount')}',
         tone: warnings.isEmpty
@@ -1646,9 +1621,9 @@ class _CharacterDiagnosticsCard extends StatelessWidget {
                 if (warnings.isEmpty)
                   Text(
                     '-',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: PrettyColors.muted),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: context.colors.onSurfaceVariant,
+                    ),
                   )
                 else
                   for (final warning in warnings)
@@ -1694,12 +1669,11 @@ class _ImagePreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final file = path == null ? null : File(path!);
-    final preview = ConstrainedBox(
-      constraints: BoxConstraints(minHeight: minHeight),
-      child: AspectRatio(
-        aspectRatio: aspectRatio,
+    final preview = LayoutBuilder(
+      builder: (context, constraints) => SizedBox(
+        height: (constraints.maxWidth / aspectRatio).clamp(minHeight, 360),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(AppRadius.workspaceControl),
           child: Stack(
             fit: StackFit.expand,
             children: [
@@ -1724,7 +1698,7 @@ class _ImagePreview extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(AppRadius.workspaceInset),
           onTap: () => showResourceDetailOverlay(
             context,
             heroTag: heroTag!,
@@ -1799,9 +1773,9 @@ class _PreviewPlaceholder extends StatelessWidget {
           Text(
             label,
             textAlign: TextAlign.center,
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: PrettyColors.muted),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: context.colors.onSurfaceVariant,
+            ),
           ),
         ],
       ),
@@ -1888,16 +1862,6 @@ Rect _iconCropPixels(
   );
 }
 
-String _fileStamp(File? file) {
-  if (file == null || !file.existsSync()) return 'missing';
-  try {
-    final stat = file.statSync();
-    return '${stat.modified.millisecondsSinceEpoch}:${stat.size}';
-  } catch (_) {
-    return 'unknown';
-  }
-}
-
 double _resourceAspectRatio(
   ResourceInfo? resource, {
   required double fallback,
@@ -1945,10 +1909,6 @@ PrettyPillTone _phaseTone(OperationPhase phase) => switch (phase) {
   OperationPhase.saving || OperationPhase.scanning => PrettyPillTone.warning,
   OperationPhase.idle => PrettyPillTone.neutral,
 };
-
-EdgeInsets _pagePadding(BuildContext context) {
-  return AppLayoutTokens.pagePadding(context);
-}
 
 String _formatBytes(int? bytes) {
   if (bytes == null) return '-';

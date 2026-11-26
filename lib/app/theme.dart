@@ -1,51 +1,53 @@
 import 'package:flutter/material.dart';
 
+import '../shared/widgets/app_motion.dart';
 import 'app_spacing.dart';
-import '../shared/widgets/pretty_ui.dart';
 
 class EtoileTheme {
-  static const Color seed = PrettyColors.primary;
+  static const Color seed = Color(0xFF246BDA);
   static const String fontFamily = 'EtoileSans';
 
-  static ThemeData light({ColorScheme? dynamicColorScheme}) {
-    final scheme = (dynamicColorScheme ?? _logoLightScheme()).copyWith(
-      brightness: Brightness.light,
+  static ThemeData build(Brightness brightness, {ColorScheme? dynamicScheme}) {
+    final scheme = dynamicScheme ?? _brandScheme(brightness);
+    final dark = brightness == Brightness.dark;
+    final typography = Typography.material2021(
+      platform: TargetPlatform.android,
     );
-    final textTheme = Typography.material2021(platform: TargetPlatform.android)
-        .black
-        .apply(
-          bodyColor: scheme.onSurface,
-          displayColor: scheme.onSurface,
-          fontFamily: fontFamily,
-        );
+    final textTheme = _typeset(
+      (dark ? typography.white : typography.black).apply(
+        bodyColor: scheme.onSurface,
+        displayColor: scheme.onSurface,
+        fontFamily: fontFamily,
+      ),
+    );
+    final shape = WidgetStateProperty.resolveWith<OutlinedBorder>((states) {
+      return RoundedSuperellipseBorder(
+        borderRadius: BorderRadius.circular(
+          states.contains(WidgetState.pressed)
+              ? AppRadius.workspacePressed
+              : AppRadius.workspaceControl,
+        ),
+      );
+    });
+    final filled = FilledButton.styleFrom(
+      minimumSize: const Size(48, 44),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+      textStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+      animationDuration: AppMotion.control,
+    ).copyWith(shape: shape);
 
     return ThemeData(
       useMaterial3: true,
       fontFamily: fontFamily,
       colorScheme: scheme,
-      scaffoldBackgroundColor: dynamicColorScheme == null
-          ? PrettyColors.page
-          : scheme.surface,
+      scaffoldBackgroundColor: scheme.surface,
       textTheme: textTheme,
-      extensions: const [
-        EtoileSemanticColors(
-          success: Color(0xFF2F7D47),
-          onSuccess: Color(0xFFFFFFFF),
-          successContainer: Color(0xFFD8F4DD),
-          onSuccessContainer: Color(0xFF0D3A1D),
-          warning: Color(0xFF8A5A00),
-          onWarning: Color(0xFFFFFFFF),
-          warningContainer: Color(0xFFFFE2A8),
-          onWarningContainer: Color(0xFF2D1B00),
-        ),
-      ],
+      extensions: [EtoileSemanticColors.forBrightness(brightness)],
       appBarTheme: AppBarTheme(
         centerTitle: false,
         elevation: AppElevation.level0,
-        scrolledUnderElevation: AppElevation.level1,
-        backgroundColor: dynamicColorScheme == null
-            ? PrettyColors.page
-            : scheme.surface,
+        scrolledUnderElevation: AppElevation.level0,
+        backgroundColor: scheme.surface,
         foregroundColor: scheme.onSurface,
         titleTextStyle: textTheme.titleLarge?.copyWith(
           color: scheme.onSurface,
@@ -54,69 +56,62 @@ class EtoileTheme {
       ),
       cardTheme: CardThemeData(
         elevation: AppElevation.level0,
-        color: scheme.surface,
+        color: scheme.surfaceContainerLow,
         surfaceTintColor: Colors.transparent,
-        shadowColor: scheme.primary.withValues(alpha: 0.12),
         margin: EdgeInsets.zero,
         clipBehavior: Clip.antiAlias,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(PrettyRadii.card),
+        shape: RoundedSuperellipseBorder(
+          borderRadius: BorderRadius.circular(AppRadius.workspaceCard),
         ),
       ),
-      filledButtonTheme: FilledButtonThemeData(
-        style: FilledButton.styleFrom(
-          minimumSize: const Size(64, 44),
-          shape: const StadiumBorder(),
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.lg,
-            vertical: AppSpacing.sm,
-          ),
-        ),
-      ),
+      filledButtonTheme: FilledButtonThemeData(style: filled),
       outlinedButtonTheme: OutlinedButtonThemeData(
-        style: OutlinedButton.styleFrom(
-          minimumSize: const Size(64, 44),
-          shape: const StadiumBorder(),
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.lg,
-            vertical: AppSpacing.sm,
-          ),
+        style: filled.copyWith(
+          side: WidgetStateProperty.resolveWith((states) {
+            return BorderSide(
+              color: states.contains(WidgetState.disabled)
+                  ? scheme.outlineVariant.withValues(alpha: 0.55)
+                  : scheme.outlineVariant,
+            );
+          }),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           minimumSize: const Size(48, 40),
-          shape: const StadiumBorder(),
-        ),
+          animationDuration: AppMotion.control,
+        ).copyWith(shape: shape),
       ),
       iconButtonTheme: IconButtonThemeData(
         style: IconButton.styleFrom(
           minimumSize: const Size(40, 40),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppRadius.md),
-          ),
+          animationDuration: AppMotion.control,
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.42),
+        fillColor: scheme.surfaceContainer,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.md,
-          vertical: AppSpacing.sm,
+          vertical: 13,
         ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppRadius.md),
+          borderRadius: BorderRadius.circular(AppRadius.workspaceControl),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppRadius.md),
-          borderSide: BorderSide(color: scheme.outlineVariant),
+          borderRadius: BorderRadius.circular(AppRadius.workspaceControl),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.workspaceControl),
+          borderSide: BorderSide(color: scheme.primary, width: 2),
         ),
       ),
       chipTheme: ChipThemeData(
         side: BorderSide(color: scheme.outlineVariant),
-        backgroundColor: scheme.secondaryContainer.withValues(alpha: 0.54),
+        backgroundColor: scheme.surfaceContainerHigh,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.md),
+          borderRadius: BorderRadius.circular(AppRadius.workspaceControl),
         ),
       ),
       navigationRailTheme: NavigationRailThemeData(
@@ -133,21 +128,29 @@ class EtoileTheme {
         ),
       ),
       navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: scheme.surface,
+        backgroundColor: scheme.surfaceContainer,
         indicatorColor: scheme.secondaryContainer,
+        iconTheme: WidgetStateProperty.resolveWith(
+          (states) => IconThemeData(
+            size: 22,
+            color: states.contains(WidgetState.selected)
+                ? scheme.onSecondaryContainer
+                : scheme.onSurfaceVariant,
+          ),
+        ),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
           return textTheme.labelMedium?.copyWith(
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-            color: selected ? scheme.onSecondaryContainer : scheme.onSurface,
+            color: selected ? scheme.onSurface : scheme.onSurfaceVariant,
           );
         }),
       ),
       dialogTheme: DialogThemeData(
-        backgroundColor: scheme.surfaceContainerHigh,
-        surfaceTintColor: scheme.surfaceTint,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.xl),
+        backgroundColor: scheme.surfaceContainerLow,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedSuperellipseBorder(
+          borderRadius: BorderRadius.circular(AppRadius.workspaceDialog),
         ),
       ),
       snackBarTheme: SnackBarThemeData(
@@ -157,7 +160,7 @@ class EtoileTheme {
           color: scheme.onInverseSurface,
         ),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.md),
+          borderRadius: BorderRadius.circular(AppRadius.workspaceControl),
         ),
       ),
       dividerTheme: DividerThemeData(
@@ -172,7 +175,7 @@ class EtoileTheme {
       listTileTheme: ListTileThemeData(
         iconColor: scheme.onSurfaceVariant,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.lg),
+          borderRadius: BorderRadius.circular(AppRadius.workspaceInset),
         ),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.md,
@@ -182,36 +185,59 @@ class EtoileTheme {
     );
   }
 
-  static ColorScheme _logoLightScheme() {
-    return ColorScheme.fromSeed(
-      seedColor: seed,
-      brightness: Brightness.light,
-    ).copyWith(
-      primary: PrettyColors.primary,
-      onPrimary: Colors.white,
-      primaryContainer: PrettyColors.primarySoft,
-      onPrimaryContainer: PrettyColors.primaryDark,
-      secondary: PrettyColors.cyan,
-      onSecondary: const Color(0xFF003543),
-      secondaryContainer: const Color(0xFFDDF7FF),
-      onSecondaryContainer: const Color(0xFF063744),
-      tertiary: PrettyColors.pink,
-      onTertiary: Colors.white,
-      tertiaryContainer: const Color(0xFFFFD7F7),
-      onTertiaryContainer: const Color(0xFF5F0057),
-      surface: PrettyColors.panel,
-      onSurface: PrettyColors.text,
-      surfaceContainerLowest: Colors.white,
-      surfaceContainerLow: PrettyColors.panelSoft,
-      surfaceContainer: const Color(0xFFF7FCFF),
-      surfaceContainerHigh: const Color(0xFFEFF8FD),
-      surfaceContainerHighest: const Color(0xFFE8F3FA),
-      onSurfaceVariant: PrettyColors.muted,
-      outline: PrettyColors.borderStrong,
-      outlineVariant: PrettyColors.border,
-      error: PrettyColors.danger,
+  static ColorScheme _brandScheme(Brightness brightness) {
+    final base = ColorScheme.fromSeed(seedColor: seed, brightness: brightness);
+    return brightness == Brightness.dark
+        ? base.copyWith(
+            surface: const Color(0xFF19191E),
+            surfaceContainerLowest: const Color(0xFF141418),
+            surfaceContainerLow: const Color(0xFF232329),
+            surfaceContainer: const Color(0xFF2B2B32),
+            surfaceContainerHigh: const Color(0xFF33333B),
+            surfaceContainerHighest: const Color(0xFF3E3D46),
+          )
+        : base.copyWith(
+            primary: const Color(0xFF0064DA),
+            surface: const Color(0xFFEDECEF),
+            surfaceContainerLowest: const Color(0xFFFFFFFF),
+            surfaceContainerLow: const Color(0xFFFBFAFC),
+            surfaceContainer: const Color(0xFFF0EFF2),
+            surfaceContainerHigh: const Color(0xFFEAE9ED),
+            surfaceContainerHighest: const Color(0xFFE1E0E6),
+            onSurface: const Color(0xFF1B1C23),
+            onSurfaceVariant: const Color(0xFF4D505B),
+            outlineVariant: const Color(0xFFD6D4DD),
+          );
+  }
+
+  static TextTheme _typeset(TextTheme theme) {
+    TextStyle? spaced(TextStyle? style) => style?.copyWith(letterSpacing: 0);
+    return theme.copyWith(
+      displayLarge: spaced(theme.displayLarge),
+      displayMedium: spaced(theme.displayMedium),
+      displaySmall: spaced(theme.displaySmall),
+      headlineLarge: spaced(theme.headlineLarge),
+      headlineMedium: spaced(theme.headlineMedium),
+      headlineSmall: spaced(theme.headlineSmall),
+      titleLarge: spaced(theme.titleLarge),
+      titleMedium: spaced(theme.titleMedium),
+      titleSmall: spaced(theme.titleSmall),
+      bodyLarge: spaced(theme.bodyLarge),
+      bodyMedium: spaced(theme.bodyMedium),
+      bodySmall: spaced(theme.bodySmall),
+      labelLarge: spaced(theme.labelLarge),
+      labelMedium: spaced(theme.labelMedium),
+      labelSmall: spaced(theme.labelSmall),
     );
   }
+}
+
+extension EtoileThemeContext on BuildContext {
+  ColorScheme get colors => Theme.of(this).colorScheme;
+
+  EtoileSemanticColors get semanticColors =>
+      Theme.of(this).extension<EtoileSemanticColors>() ??
+      EtoileSemanticColors.forBrightness(colors.brightness);
 }
 
 @immutable
@@ -235,6 +261,29 @@ class EtoileSemanticColors extends ThemeExtension<EtoileSemanticColors> {
   final Color onWarning;
   final Color warningContainer;
   final Color onWarningContainer;
+
+  static EtoileSemanticColors forBrightness(Brightness brightness) =>
+      brightness == Brightness.dark
+      ? const EtoileSemanticColors(
+          success: Color(0xFF98D6A7),
+          onSuccess: Color(0xFF00391B),
+          successContainer: Color(0xFF204A31),
+          onSuccessContainer: Color(0xFFC5EED0),
+          warning: Color(0xFFFFCF83),
+          onWarning: Color(0xFF432C00),
+          warningContainer: Color(0xFF503916),
+          onWarningContainer: Color(0xFFFFDFAB),
+        )
+      : const EtoileSemanticColors(
+          success: Color(0xFF24663D),
+          onSuccess: Color(0xFFFFFFFF),
+          successContainer: Color(0xFFDAF1E0),
+          onSuccessContainer: Color(0xFF17482B),
+          warning: Color(0xFF7A4D00),
+          onWarning: Color(0xFFFFFFFF),
+          warningContainer: Color(0xFFFFEBCB),
+          onWarningContainer: Color(0xFF603A00),
+        );
 
   @override
   EtoileSemanticColors copyWith({

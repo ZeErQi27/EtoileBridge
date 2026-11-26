@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:path/path.dart' as p;
 
+import '../../app/app_spacing.dart';
+import '../../app/theme.dart';
 import '../../core/audio/audio_processing.dart';
 import '../../core/i18n/app_strings.dart';
 import '../../core/models/single_song_models.dart';
@@ -88,12 +90,17 @@ class _AudioPreviewPanelState extends State<AudioPreviewPanel> {
             final hasAudioPath = widget.resource.path?.isNotEmpty == true;
             return Container(
               padding: EdgeInsets.all(widget.compact ? 8 : 16),
-              decoration: BoxDecoration(
-                color: PrettyColors.primarySofter.withValues(alpha: 0.46),
-                borderRadius: BorderRadius.circular(widget.compact ? 16 : 22),
-                border: Border.all(color: PrettyColors.border),
-              ),
+              decoration: widget.compact
+                  ? null
+                  : BoxDecoration(
+                      color: context.colors.surfaceContainerHigh,
+                      borderRadius: BorderRadius.circular(
+                        AppRadius.workspaceInset,
+                      ),
+                      border: Border.all(color: context.colors.outlineVariant),
+                    ),
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   _AudioHeader(
@@ -108,7 +115,8 @@ class _AudioPreviewPanelState extends State<AudioPreviewPanel> {
                         : () => _togglePlayback(analysis),
                   ),
                   SizedBox(height: widget.compact ? 6 : 12),
-                  Expanded(
+                  SizedBox(
+                    height: widget.compact ? 60 : 124,
                     child: _WaveformBox(
                       loading: loading,
                       peaks: analysis?.peaks ?? const [],
@@ -411,6 +419,7 @@ class _AudioHeader extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         Expanded(
+          flex: 3,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -419,8 +428,8 @@ class _AudioHeader extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: PrettyColors.text,
-                  fontWeight: FontWeight.w900,
+                  color: context.colors.onSurface,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
               const SizedBox(height: 2),
@@ -433,7 +442,7 @@ class _AudioHeader extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: PrettyColors.muted,
+                  color: context.colors.onSurfaceVariant,
                   fontSize: compact ? 11 : null,
                 ),
               ),
@@ -442,7 +451,13 @@ class _AudioHeader extends StatelessWidget {
         ),
         if (compatibility != null) ...[
           const SizedBox(width: 8),
-          _AudioCompatibilityPill(report: compatibility!),
+          Flexible(
+            flex: 2,
+            child: Align(
+              alignment: AlignmentDirectional.centerEnd,
+              child: _AudioCompatibilityPill(report: compatibility!),
+            ),
+          ),
         ],
       ],
     );
@@ -488,7 +503,7 @@ class _AudioCompatibilityFooter extends StatelessWidget {
             maxLines: compact ? 1 : 2,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: PrettyColors.muted,
+              color: context.colors.onSurfaceVariant,
               fontWeight: FontWeight.w700,
               fontSize: compact ? 11 : null,
             ),
@@ -525,7 +540,7 @@ class _AudioCompatibilityFooter extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: PrettyColors.danger,
+                color: context.colors.error,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -583,11 +598,12 @@ class _WaveformBox extends StatelessWidget {
               ? null
               : (details) => seek(details.localPosition),
           child: CustomPaint(
+            size: Size(constraints.maxWidth, constraints.maxHeight),
             painter: RealWaveformPainter(
               peaks: peaks,
               progress: progress,
-              color: PrettyColors.primary,
-              backgroundColor: PrettyColors.primary.withValues(alpha: 0.22),
+              color: context.colors.primary,
+              backgroundColor: context.colors.primary.withValues(alpha: 0.22),
             ),
           ),
         );
@@ -620,9 +636,9 @@ class _AudioSeekBar extends StatelessWidget {
         if (!compact)
           Text(
             _formatDuration(position),
-            style: Theme.of(
-              context,
-            ).textTheme.labelSmall?.copyWith(color: PrettyColors.muted),
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: context.colors.onSurfaceVariant,
+            ),
           ),
         Expanded(
           child: SizedBox(
@@ -647,9 +663,9 @@ class _AudioSeekBar extends StatelessWidget {
         if (!compact)
           Text(
             duration == null ? '--:--' : _formatDuration(duration!),
-            style: Theme.of(
-              context,
-            ).textTheme.labelSmall?.copyWith(color: PrettyColors.muted),
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: context.colors.onSurfaceVariant,
+            ),
           ),
       ],
     );
@@ -689,7 +705,7 @@ class _AudioDetails extends StatelessWidget {
                     child: Text(
                       entry.key,
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: PrettyColors.muted,
+                        color: context.colors.onSurfaceVariant,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -700,7 +716,7 @@ class _AudioDetails extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: PrettyColors.text,
+                        color: context.colors.onSurface,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -726,7 +742,7 @@ class _AudioUnavailableMessage extends StatelessWidget {
         message,
         textAlign: TextAlign.center,
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-          color: PrettyColors.muted,
+          color: context.colors.onSurfaceVariant,
           fontWeight: FontWeight.w700,
         ),
       ),

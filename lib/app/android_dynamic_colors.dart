@@ -2,12 +2,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+typedef AndroidColorSchemes = ({ColorScheme light, ColorScheme dark});
+
 class AndroidDynamicColors {
   const AndroidDynamicColors._();
 
   static const _channel = MethodChannel('com.zeerqi27.etoile_bridge/theme');
 
-  static Future<ColorScheme?> lightScheme() async {
+  static Future<AndroidColorSchemes?> load() async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
       return null;
     }
@@ -18,29 +20,27 @@ class AndroidDynamicColors {
       if (values == null || values.isEmpty) return null;
       final primary = _readColor(values, 'primary');
       if (primary == null) return null;
-      return ColorScheme.fromSeed(
-        seedColor: primary,
-        brightness: Brightness.light,
-      ).copyWith(
-        primary: primary,
-        primaryContainer: _readColor(values, 'primaryContainer'),
-        onPrimaryContainer: _readColor(values, 'onPrimaryContainer'),
-        secondary: _readColor(values, 'secondary'),
-        secondaryContainer: _readColor(values, 'secondaryContainer'),
-        onSecondaryContainer: _readColor(values, 'onSecondaryContainer'),
-        tertiary: _readColor(values, 'tertiary'),
-        tertiaryContainer: _readColor(values, 'tertiaryContainer'),
-        onTertiaryContainer: _readColor(values, 'onTertiaryContainer'),
-        surface: _readColor(values, 'surface'),
-        onSurface: _readColor(values, 'onSurface'),
-        surfaceContainerLow: _readColor(values, 'surfaceContainerLow'),
-        surfaceContainer: _readColor(values, 'surfaceContainer'),
-        surfaceContainerHigh: _readColor(values, 'surfaceContainerHigh'),
-        surfaceContainerHighest: _readColor(values, 'surfaceContainerHighest'),
-        onSurfaceVariant: _readColor(values, 'onSurfaceVariant'),
-        outline: _readColor(values, 'outline'),
-        outlineVariant: _readColor(values, 'outlineVariant'),
-      );
+      final secondary = _readColor(values, 'secondary');
+      final tertiary = _readColor(values, 'tertiary');
+      ColorScheme scheme(Brightness brightness) {
+        ColorScheme fromSeed(Color seed) =>
+            ColorScheme.fromSeed(seedColor: seed, brightness: brightness);
+        final base = fromSeed(primary);
+        final accent2 = secondary == null ? null : fromSeed(secondary);
+        final accent3 = tertiary == null ? null : fromSeed(tertiary);
+        return base.copyWith(
+          secondary: accent2?.primary,
+          onSecondary: accent2?.onPrimary,
+          secondaryContainer: accent2?.primaryContainer,
+          onSecondaryContainer: accent2?.onPrimaryContainer,
+          tertiary: accent3?.primary,
+          onTertiary: accent3?.onPrimary,
+          tertiaryContainer: accent3?.primaryContainer,
+          onTertiaryContainer: accent3?.onPrimaryContainer,
+        );
+      }
+
+      return (light: scheme(Brightness.light), dark: scheme(Brightness.dark));
     } on MissingPluginException {
       return null;
     } on PlatformException {

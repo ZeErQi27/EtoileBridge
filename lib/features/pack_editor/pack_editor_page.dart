@@ -11,6 +11,7 @@ import '../../app/app_spacing.dart';
 import '../../app/app_state.dart';
 import '../../app/routes.dart';
 import '../../app/safe_action.dart';
+import '../../app/theme.dart';
 import '../../core/i18n/app_strings.dart';
 import '../../core/models/operation_models.dart';
 import '../../core/models/pack_models.dart';
@@ -19,11 +20,13 @@ import '../../shared/layout/app_layout_tokens.dart';
 import '../../shared/cards/surface_card.dart';
 import '../../shared/previews/mock_preview.dart';
 import '../../shared/widgets/conversion_options_controls.dart';
+import '../../shared/widgets/app_motion.dart';
 import '../../shared/widgets/info_row.dart';
 import '../../shared/widgets/log_panel.dart';
 import '../../shared/widgets/md3_components.dart';
 import '../../shared/widgets/pretty_ui.dart';
 import '../../shared/widgets/resource_detail_overlay.dart';
+import '../../shared/widgets/workspace_choices.dart';
 import 'pack_editor_state.dart';
 
 class PackEditorPage extends StatelessWidget {
@@ -36,123 +39,85 @@ class PackEditorPage extends StatelessWidget {
     final busy =
         page.phase == OperationPhase.scanning ||
         page.phase == OperationPhase.saving;
-    return SingleChildScrollView(
-      padding: AppLayoutTokens.pagePadding(context),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(
-            maxWidth: AppLayoutTokens.pageContentMaxWidth,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _PackHeroHeader(page: page),
-              const SizedBox(height: 24),
-              _PackWorkbenchLayout(
-                left: [
-                  _PackInputWorkbenchCard(state: state, page: page, busy: busy),
-                  _PackSaveWorkbenchCard(state: state, page: page, busy: busy),
-                  if (page.mode != PackEditorMode.existing)
-                    _PackPreprocessWorkbenchCard(state: state, page: page),
-                ],
-                middle: [
-                  _PackMetadataWorkbenchCard(state: state, page: page),
-                  _PackLevelWorkbenchCard(state: state, page: page),
-                ],
-                right: [
-                  _PackCoverWorkbenchCard(page: page),
-                  _SelectedPackEntryWorkbenchCard(page: page),
-                  _PackDiagnosticsWorkbenchCard(page: page),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _PackHeroHeader extends StatelessWidget {
-  const _PackHeroHeader({required this.page});
-
-  final PackEditorState page;
-
-  @override
-  Widget build(BuildContext context) {
     final warnings = _packWarningItems(page);
-    final scan = page.scan;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                context.t('app.title'),
-                style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                  fontWeight: FontWeight.w900,
-                  color: PrettyColors.text,
-                  letterSpacing: 0,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                context.t('page.packEditor'),
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: PrettyColors.muted,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
+    final input = AppWorkspacePanel(
+      'input',
+      _PackInputWorkbenchCard(state: state, page: page, busy: busy),
+    );
+    final metadata = AppWorkspacePanel(
+      'metadata',
+      _PackMetadataWorkbenchCard(state: state, page: page),
+    );
+    final save = AppWorkspacePanel(
+      'save',
+      _PackSaveWorkbenchCard(state: state, page: page, busy: busy),
+    );
+    final cover = AppWorkspacePanel(
+      'cover',
+      _PackCoverWorkbenchCard(page: page),
+    );
+    final levels = AppWorkspacePanel(
+      'levels',
+      _PackLevelWorkbenchCard(state: state, page: page),
+    );
+    final selected = AppWorkspacePanel(
+      'selected',
+      _SelectedPackEntryWorkbenchCard(page: page),
+    );
+    final diagnostics = AppWorkspacePanel(
+      'diagnostics',
+      _PackDiagnosticsWorkbenchCard(page: page),
+    );
+    final empty = page.entryCount == 0;
+    return AppWorkspaceScaffold(
+      title: context.t('page.packEditor'),
+      actions: [
+        if (page.scan != null) ...[
+          PrettyPill(
+            icon: Icons.inventory_2_rounded,
+            label: page.packId,
+            tone: PrettyPillTone.primary,
           ),
-        ),
-        if (scan != null || warnings.isNotEmpty)
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            alignment: WrapAlignment.end,
-            children: [
-              PrettyPill(
-                icon: Icons.inventory_2_rounded,
-                label: page.packId,
-                tone: PrettyPillTone.primary,
-              ),
-              PrettyPill(
-                icon: Icons.queue_music_rounded,
-                label: '${page.entryCount} ${context.t('levelList')}',
-                tone: PrettyPillTone.neutral,
-              ),
-              if (warnings.isNotEmpty)
-                ActionChip(
-                  avatar: const Icon(Icons.warning_amber_rounded, size: 18),
-                  label: Text(
-                    '${context.t('warningCount')} ${warnings.length}',
-                  ),
-                  onPressed: () => _openPackWarningsDialog(context, page),
-                ),
-            ],
+          PrettyPill(
+            icon: Icons.queue_music_rounded,
+            label: '${page.entryCount} ${context.t('levelList')}',
+          ),
+        ],
+        if (warnings.isNotEmpty)
+          ActionChip(
+            avatar: const Icon(Icons.warning_amber_rounded, size: 18),
+            label: Text('${context.t('warningCount')} ${warnings.length}'),
+            onPressed: () => _openPackWarningsDialog(context, page),
           ),
       ],
+      child: AppWorkspaceLayout(
+        bands: (columns) => switch (columns) {
+          3 => [
+            AppWorkspaceBand([input, metadata, cover]),
+            AppWorkspaceBand([save.across(2), diagnostics], matchHeight: false),
+            AppWorkspaceBand([levels.across(2), selected], matchHeight: empty),
+          ],
+          2 => [
+            AppWorkspaceBand([input, metadata]),
+            AppWorkspaceBand([save, cover], matchHeight: false),
+            AppWorkspaceBand([levels, selected], matchHeight: empty),
+            AppWorkspaceBand([diagnostics.across(2)]),
+          ],
+          _ => [
+            for (final panel in [
+              input,
+              save,
+              metadata,
+              levels,
+              cover,
+              selected,
+              diagnostics,
+            ])
+              AppWorkspaceBand([panel]),
+          ],
+        },
+      ),
     );
-  }
-}
-
-class _PackWorkbenchLayout extends StatelessWidget {
-  const _PackWorkbenchLayout({
-    required this.left,
-    required this.middle,
-    required this.right,
-  });
-
-  final List<Widget> left;
-  final List<Widget> middle;
-  final List<Widget> right;
-
-  @override
-  Widget build(BuildContext context) {
-    return AppWorkspaceLayout(left: left, middle: middle, right: right);
   }
 }
 
@@ -191,54 +156,58 @@ class _PackInputWorkbenchCard extends StatelessWidget {
     return PrettyCard(
       title: context.t('input'),
       icon: Icons.folder_open_rounded,
+      trailing: page.inputPaths.isEmpty
+          ? PrettyPill(label: context.t('notSelected'))
+          : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: PackEditorMode.values
-                .map(
-                  (mode) => _PackModeButton(
-                    mode: mode,
-                    selected: page.mode == mode,
-                    onPressed: busy
-                        ? null
-                        : () => safeAction(
-                            context,
-                            id: 'pack.mode.change',
-                            label: mode.name,
-                            page: AppPageId.packEditor,
-                            action: () => state.setPackMode(mode),
-                          ),
-                  ),
-                )
-                .toList(),
+          WorkspaceChoices<PackEditorMode>(
+            key: const ValueKey('pack-mode'),
+            choices: [
+              for (final mode in PackEditorMode.values)
+                WorkspaceChoice(
+                  mode,
+                  context.t('packMode.short.${mode.name}'),
+                  icon: switch (mode) {
+                    PackEditorMode.official => Icons.inventory_2_outlined,
+                    PackEditorMode.bundle => Icons.all_inbox_outlined,
+                    PackEditorMode.existing => Icons.edit_document,
+                  },
+                  tooltip: context.t('packMode.${mode.name}'),
+                ),
+            ],
+            value: page.mode,
+            onChanged: busy
+                ? null
+                : (mode) {
+                    if (mode == page.mode) return;
+                    safeAction(
+                      context,
+                      id: 'pack.mode.change',
+                      label: mode.name,
+                      page: AppPageId.packEditor,
+                      action: () => state.setPackMode(mode),
+                    );
+                  },
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpacing.sm),
           Wrap(
             spacing: 10,
             runSpacing: 10,
             children: _packInputActions(context, state, page, busy),
           ),
-          const SizedBox(height: 18),
-          Text(
-            context.t('currentInput'),
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              color: PrettyColors.muted,
-              fontWeight: FontWeight.w800,
+          if (page.inputPaths.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              context.t('currentInput'),
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                color: context.colors.onSurfaceVariant,
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          if (page.inputPaths.isEmpty)
-            DashedEmptyBox(
-              icon: Icons.inventory_2_outlined,
-              title: context.t('notSelected'),
-              subtitle: context.t('subtitle.packEditor'),
-              minHeight: 138,
-            )
-          else
+            const SizedBox(height: AppSpacing.xs),
             _PackInputList(state: state, paths: page.inputPaths, busy: busy),
+          ],
           if (kDebugMode) ...[
             const SizedBox(height: 8),
             Align(
@@ -272,7 +241,7 @@ class _PackInputWorkbenchCard extends StatelessWidget {
     switch (page.mode) {
       case PackEditorMode.official:
         return [
-          PrettyGlassButton(
+          WorkspaceAction(
             primary: true,
             icon: Icons.archive_rounded,
             label: context.t('chooseZip'),
@@ -286,7 +255,7 @@ class _PackInputWorkbenchCard extends StatelessWidget {
                     action: state.pickOfficialPackZip,
                   ),
           ),
-          PrettyGlassButton(
+          WorkspaceAction(
             icon: Icons.folder_rounded,
             label: context.t('chooseFolder'),
             onPressed: busy
@@ -302,7 +271,7 @@ class _PackInputWorkbenchCard extends StatelessWidget {
         ];
       case PackEditorMode.bundle:
         return [
-          PrettyGlassButton(
+          WorkspaceAction(
             primary: true,
             icon: Icons.library_add_rounded,
             label: context.t('chooseArcpkg'),
@@ -316,7 +285,7 @@ class _PackInputWorkbenchCard extends StatelessWidget {
                     action: state.pickPackBundleArcpkg,
                   ),
           ),
-          PrettyGlassButton(
+          WorkspaceAction(
             icon: Icons.add_rounded,
             label: context.t('addArcpkg'),
             onPressed: busy || page.inputPaths.isEmpty
@@ -329,7 +298,7 @@ class _PackInputWorkbenchCard extends StatelessWidget {
                     action: state.appendPackBundleArcpkg,
                   ),
           ),
-          PrettyGlassButton(
+          WorkspaceAction(
             icon: Icons.create_new_folder_rounded,
             label: page.inputPaths.isEmpty
                 ? context.t('chooseFolder')
@@ -351,7 +320,7 @@ class _PackInputWorkbenchCard extends StatelessWidget {
         ];
       case PackEditorMode.existing:
         return [
-          PrettyGlassButton(
+          WorkspaceAction(
             primary: true,
             icon: Icons.edit_document,
             label: context.t('chooseArcpkg'),
@@ -365,7 +334,7 @@ class _PackInputWorkbenchCard extends StatelessWidget {
                     action: state.pickExistingPack,
                   ),
           ),
-          PrettyGlassButton(
+          WorkspaceAction(
             icon: Icons.library_add_rounded,
             label: context.t('addArcpkg'),
             onPressed: busy || page.inputPaths.isEmpty
@@ -378,7 +347,7 @@ class _PackInputWorkbenchCard extends StatelessWidget {
                     action: state.appendExistingPackArcpkg,
                   ),
           ),
-          PrettyGlassButton(
+          WorkspaceAction(
             icon: Icons.create_new_folder_rounded,
             label: context.t('addFolder'),
             onPressed: busy || page.inputPaths.isEmpty
@@ -393,64 +362,6 @@ class _PackInputWorkbenchCard extends StatelessWidget {
           ),
         ];
     }
-  }
-}
-
-class _PackModeButton extends StatelessWidget {
-  const _PackModeButton({
-    required this.mode,
-    required this.selected,
-    required this.onPressed,
-  });
-
-  final PackEditorMode mode;
-  final bool selected;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final icon = switch (mode) {
-      PackEditorMode.official => Icons.inventory_2_rounded,
-      PackEditorMode.bundle => Icons.all_inbox_rounded,
-      PackEditorMode.existing => Icons.edit_document,
-    };
-    return Material(
-      color: selected
-          ? scheme.primaryContainer.withValues(alpha: 0.68)
-          : scheme.surfaceContainerHighest.withValues(alpha: 0.46),
-      borderRadius: BorderRadius.circular(PrettyRadii.control),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(PrettyRadii.control),
-        onTap: onPressed,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 48, maxWidth: 230),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, size: 20, color: scheme.primary),
-                const SizedBox(width: 9),
-                Flexible(
-                  child: Text(
-                    context.t('packMode.${mode.name}'),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: selected
-                          ? scheme.onPrimaryContainer
-                          : scheme.onSurface,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }
 
@@ -473,8 +384,8 @@ class _PackInputList extends StatelessWidget {
         color: Theme.of(
           context,
         ).colorScheme.primaryContainer.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: PrettyColors.border),
+        borderRadius: BorderRadius.circular(AppRadius.workspaceInset),
+        border: Border.all(color: context.colors.outlineVariant),
       ),
       child: Column(
         children: [
@@ -550,11 +461,7 @@ class _PackMetadataWorkbenchCard extends StatelessWidget {
       title: context.t('packSettings'),
       icon: Icons.tune_rounded,
       trailing: warnings.isEmpty
-          ? PrettyPill(
-              icon: Icons.verified_rounded,
-              label: context.t('readyToSave'),
-              tone: PrettyPillTone.success,
-            )
+          ? null
           : ActionChip(
               avatar: const Icon(Icons.warning_amber_rounded, size: 18),
               label: Text('${warnings.length}'),
@@ -563,139 +470,69 @@ class _PackMetadataWorkbenchCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              _PackMetricTile(
-                label: 'identifier',
-                value:
-                    scan?.packIdentifier ?? 'etoilebridge.${page.packId}.pack',
-              ),
-              _PackMetricTile(
-                label: 'directory',
-                value: scan?.packDirectory ?? page.packId,
-              ),
-              _PackMetricTile(
-                label: context.t('levelList'),
-                value: '${page.entryCount}',
-              ),
-              _PackMetricTile(
-                label: context.t('packCover'),
-                value: scan?.packImage == null
-                    ? context.t('resource.missing')
-                    : context.t('resource.identified'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
           TextFormField(
-            key: ValueKey('pack-name-${page.packName}'),
+            key: ValueKey(('pack-name', scan, page.inputPath)),
             initialValue: page.packName,
-            decoration: const InputDecoration(labelText: 'packName'),
+            decoration: InputDecoration(
+              labelText: context.t('pack.fields.name'),
+            ),
             onChanged: (value) => state.updatePackMetadata(packName: value),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: AppSpacing.xs),
           TextFormField(
-            key: ValueKey('pack-id-${page.packId}'),
+            key: ValueKey(('pack-id', scan, page.inputPath)),
             initialValue: page.packId,
-            decoration: const InputDecoration(labelText: 'packId'),
+            decoration: InputDecoration(labelText: context.t('pack.fields.id')),
             onChanged: (value) => state.updatePackMetadata(packId: value),
           ),
           if (scan != null) ...[
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                PrettyPill(
-                  label:
-                      '${context.t('existingLevels')}: ${scan.existingLevelCount}',
-                ),
-                PrettyPill(
-                  label: '${context.t('addedLevels')}: ${scan.addedLevelCount}',
-                ),
-                PrettyPill(
-                  label: '${context.t('finalLevels')}: ${scan.finalLevelCount}',
-                ),
-                if (scan.renamedConflictCount > 0)
-                  PrettyPill(
-                    icon: Icons.drive_file_rename_outline_rounded,
-                    label: '${scan.renamedConflictCount}',
-                    tone: PrettyPillTone.warning,
+            const SizedBox(height: 10),
+            PrettyExpandableSection(
+              title: context.t('advanced'),
+              icon: Icons.info_outline_rounded,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  InfoRow(
+                    label: 'identifier',
+                    value:
+                        scan.packIdentifier ??
+                        'etoilebridge.${page.packId}.pack',
                   ),
-              ],
+                  InfoRow(
+                    label: 'directory',
+                    value: scan.packDirectory ?? page.packId,
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      PrettyPill(
+                        label:
+                            '${context.t('existingLevels')}: ${scan.existingLevelCount}',
+                      ),
+                      PrettyPill(
+                        label:
+                            '${context.t('addedLevels')}: ${scan.addedLevelCount}',
+                      ),
+                      PrettyPill(
+                        label:
+                            '${context.t('finalLevels')}: ${scan.finalLevelCount}',
+                      ),
+                      if (scan.renamedConflictCount > 0)
+                        PrettyPill(
+                          icon: Icons.drive_file_rename_outline_rounded,
+                          label: '${scan.renamedConflictCount}',
+                          tone: PrettyPillTone.warning,
+                        ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ],
         ],
-      ),
-    );
-  }
-}
-
-class _PackMetricTile extends StatelessWidget {
-  const _PackMetricTile({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return ConstrainedBox(
-      constraints: const BoxConstraints(minWidth: 150, maxWidth: 250),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Theme.of(
-            context,
-          ).colorScheme.primaryContainer.withValues(alpha: 0.14),
-          borderRadius: BorderRadius.circular(18),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: PrettyColors.muted,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              value,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(
-                context,
-              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PackPreprocessWorkbenchCard extends StatelessWidget {
-  const _PackPreprocessWorkbenchCard({required this.state, required this.page});
-
-  final AppState state;
-  final PackEditorState page;
-
-  @override
-  Widget build(BuildContext context) {
-    return PrettyCard(
-      title: context.t('preprocess'),
-      icon: Icons.auto_fix_high_rounded,
-      compact: true,
-      child: PreprocessOptionsPanel(
-        value: page.preprocessOptions,
-        onChanged: state.updatePackPreprocess,
-        pageId: AppPageId.packEditor,
-        actionPrefix: 'pack.preprocess',
       ),
     );
   }
@@ -750,39 +587,45 @@ class _PackSaveWorkbenchCard extends StatelessWidget {
           if (result != null)
             _PackSaveResultPanel(result: result, state: state)
           else if (failed)
-            Text(
-              page.error!,
-              style: const TextStyle(color: PrettyColors.danger),
-            )
+            Text(page.error!, style: TextStyle(color: context.colors.error))
           else
             Text(
               canSave
                   ? '$enabledEntries ${context.t('levelList')} / $enabledCharts ${context.t('charts')}'
                   : page.scan != null && enabledCharts == 0
                   ? context.t('noExportableCharts')
-                  : context.t('saveDisabledHint'),
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: PrettyColors.muted),
+                  : context.t('pack.save.empty'),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: context.colors.onSurfaceVariant,
+              ),
             ),
-          const SizedBox(height: 14),
-          FilledButton.icon(
-            onPressed: canSave
-                ? () => safeAction(
-                    context,
-                    id: 'pack.save',
-                    label: page.packId,
-                    page: AppPageId.packEditor,
-                    action: state.savePack,
-                  )
-                : null,
-            icon: Icon(
-              result == null ? Icons.save_rounded : Icons.sync_rounded,
-            ),
-            label: Text(
-              result == null
-                  ? context.t('saveArcpkg')
-                  : context.t('exportAgain'),
+          const SizedBox(height: AppSpacing.sm),
+          WorkspaceExportActions(
+            preprocess: page.mode == PackEditorMode.existing
+                ? null
+                : PreprocessOptionsPanel(
+                    value: page.preprocessOptions,
+                    onChanged: state.updatePackPreprocess,
+                    pageId: AppPageId.packEditor,
+                    actionPrefix: 'pack.preprocess',
+                    enabled: !busy,
+                  ),
+            save: FilledButton.icon(
+              onPressed: canSave
+                  ? () => safeAction(
+                      context,
+                      id: 'pack.save',
+                      label: page.packId,
+                      page: AppPageId.packEditor,
+                      action: state.savePack,
+                    )
+                  : null,
+              icon: Icon(
+                result == null ? Icons.save_rounded : Icons.sync_rounded,
+              ),
+              label: Text(
+                context.t(result == null ? 'saveArcpkg' : 'exportAgain'),
+              ),
             ),
           ),
         ],
@@ -806,17 +649,14 @@ class _PackSaveResultPanel extends StatelessWidget {
         color: Theme.of(
           context,
         ).colorScheme.primaryContainer.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(AppRadius.workspaceInset),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(
-                Icons.inventory_2_rounded,
-                color: PrettyColors.primary,
-              ),
+              Icon(Icons.inventory_2_rounded, color: context.colors.primary),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
@@ -931,11 +771,10 @@ class _SelectedPackEntryWorkbenchCard extends StatelessWidget {
       title: context.t('selectedSong'),
       icon: Icons.music_note_rounded,
       child: title == null
-          ? DashedEmptyBox(
+          ? WorkspaceEmptyState(
               icon: Icons.queue_music_rounded,
               title: context.t('notSelected'),
-              subtitle: context.t('levelList'),
-              minHeight: 140,
+              subtitle: '',
             )
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -963,9 +802,9 @@ class _SelectedPackEntryWorkbenchCard extends StatelessWidget {
                   entry?.artist ?? mock?.composer ?? '-',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(color: PrettyColors.muted),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: context.colors.onSurfaceVariant,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 InfoRow(
@@ -1029,7 +868,6 @@ class _PackDiagnosticsWorkbenchCard extends StatelessWidget {
     return PrettyCard(
       title: context.t('scanDiagnostics'),
       icon: Icons.fact_check_rounded,
-      compact: true,
       trailing: warnings.isEmpty
           ? null
           : ActionChip(
@@ -1100,35 +938,96 @@ class _PackLevelWorkbenchCard extends StatelessWidget {
               ],
             ),
       child: page.entryCount == 0
-          ? DashedEmptyBox(
+          ? WorkspaceEmptyState(
               icon: Icons.queue_music_rounded,
               title: context.t('notSelected'),
-              subtitle: context.t('subtitle.packEditor'),
-              minHeight: 170,
+              subtitle: '',
             )
           : Column(
               children: [
                 for (var i = 0; i < page.entryCount; i++)
-                  _PackLevelPrettyRow(index: i),
+                  _PackLevelPrettyRow(
+                    key: ObjectKey(
+                      page.entries.isNotEmpty
+                          ? page.entries[i]
+                          : page.levels[i],
+                    ),
+                    index: i,
+                    expanded: page.expanded.contains(i),
+                  ),
               ],
             ),
     );
   }
 }
 
-class _PackLevelPrettyRow extends StatelessWidget {
-  const _PackLevelPrettyRow({required this.index});
+class _PackLevelPrettyRow extends StatefulWidget {
+  const _PackLevelPrettyRow({
+    required this.index,
+    required this.expanded,
+    super.key,
+  });
 
   final int index;
+  final bool expanded;
+
+  @override
+  State<_PackLevelPrettyRow> createState() => _PackLevelPrettyRowState();
+}
+
+class _PackLevelPrettyRowState extends State<_PackLevelPrettyRow>
+    with SingleTickerProviderStateMixin {
+  late final _reveal =
+      AnimationController(
+        vsync: this,
+        value: widget.expanded ? 1 : 0,
+        duration: AppMotion.reveal,
+      )..addStatusListener((status) {
+        if (status == AnimationStatus.dismissed && !widget.expanded) {
+          setState(() {});
+        }
+      });
+  late final _height = _reveal.drive(CurveTween(curve: AppMotion.travel));
+  late final _fade = _reveal.drive(
+    CurveTween(curve: const Interval(0.18, 1, curve: AppMotion.enter)),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _reveal.value = widget.expanded ? 1 : 0;
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _PackLevelPrettyRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.expanded == widget.expanded) return;
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _reveal.value = widget.expanded ? 1 : 0;
+    } else if (widget.expanded) {
+      _reveal.forward();
+    } else {
+      _reveal.reverse();
+    }
+  }
+
+  @override
+  void dispose() {
+    _reveal.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     final page = state.packEditor;
+    final index = widget.index;
     final entry = page.entries.isNotEmpty ? page.entries[index] : null;
     final level = entry == null ? page.levels[index] : null;
     final selected = page.selectedEntryIndex == index;
-    final expanded = page.expanded.contains(index);
+    final expanded = widget.expanded;
     final highlighted = page.highlightedWarningEntryIndex == index;
     final title = entry?.title ?? level?.title ?? '-';
     final composer = entry?.artist ?? level?.composer ?? '-';
@@ -1140,25 +1039,26 @@ class _PackLevelPrettyRow extends StatelessWidget {
     final enabled = entry?.enabled ?? level?.enabled ?? true;
     final scheme = Theme.of(context).colorScheme;
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      margin: const EdgeInsets.only(bottom: 10),
+      duration: AppMotion.duration(context, AppMotion.control),
+      curve: AppMotion.enter,
+      margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
         color: highlighted
-            ? scheme.tertiaryContainer.withValues(alpha: 0.45)
+            ? scheme.tertiaryContainer
             : selected
-            ? scheme.primaryContainer.withValues(alpha: 0.28)
-            : scheme.surfaceContainerHighest.withValues(alpha: 0.22),
-        borderRadius: BorderRadius.circular(22),
+            ? scheme.secondaryContainer.withValues(alpha: 0.62)
+            : scheme.surfaceContainer,
+        borderRadius: BorderRadius.circular(AppRadius.workspaceInset),
         border: Border.all(
           color: selected
-              ? scheme.primary.withValues(alpha: 0.42)
-              : PrettyColors.border,
+              ? scheme.primary.withValues(alpha: 0.38)
+              : Colors.transparent,
         ),
       ),
       child: Column(
         children: [
           InkWell(
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(AppRadius.workspaceInset),
             onTap: () => state.selectPackEntry(index),
             child: Padding(
               padding: const EdgeInsets.all(12),
@@ -1188,7 +1088,9 @@ class _PackLevelPrettyRow extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: PrettyColors.muted),
+                              ?.copyWith(
+                                color: context.colors.onSurfaceVariant,
+                              ),
                         ),
                         const SizedBox(height: 6),
                         Wrap(
@@ -1223,6 +1125,9 @@ class _PackLevelPrettyRow extends StatelessWidget {
                     ),
                   ),
                   IconButton(
+                    tooltip: context.t(
+                      expanded ? 'collapseSong' : 'expandSong',
+                    ),
                     onPressed: () => safeAction(
                       context,
                       id: expanded
@@ -1232,86 +1137,98 @@ class _PackLevelPrettyRow extends StatelessWidget {
                       page: AppPageId.packEditor,
                       action: () => state.togglePackLevel(index),
                     ),
-                    icon: Icon(
-                      expanded
-                          ? Icons.expand_less_rounded
-                          : Icons.expand_more_rounded,
+                    icon: RotationTransition(
+                      turns: _height.drive(Tween(begin: 0.0, end: 0.5)),
+                      child: const Icon(Icons.expand_more_rounded),
                     ),
                   ),
                 ],
               ),
             ),
           ),
-          AnimatedSize(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            child: expanded
-                ? Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                    child: Column(
-                      children: [
-                        TextFormField(
-                          key: ValueKey('pack-pretty-title-$index-$title'),
-                          initialValue: title,
-                          decoration: InputDecoration(
-                            labelText: context.t('field.title'),
-                          ),
-                          onChanged: (value) {
-                            if (entry != null) entry.title = value;
-                          },
-                        ),
-                        const SizedBox(height: 8),
-                        TextFormField(
-                          key: ValueKey(
-                            'pack-pretty-composer-$index-$composer',
-                          ),
-                          initialValue: composer,
-                          decoration: InputDecoration(
-                            labelText: context.t('field.composer'),
-                          ),
-                          onChanged: (value) {
-                            if (entry != null) entry.artist = value;
-                          },
-                        ),
-                        const SizedBox(height: 10),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            identifier,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(color: PrettyColors.muted),
-                          ),
-                        ),
-                        if (entry != null)
-                          for (
-                            var chartIndex = 0;
-                            chartIndex < entry.charts.length;
-                            chartIndex++
-                          )
-                            _PackChartToggleRow(
-                              entryIndex: index,
-                              chartIndex: chartIndex,
-                              chart: entry.charts[chartIndex],
+          if (expanded || !_reveal.isDismissed)
+            SizeTransition(
+              alignment: Alignment.topCenter,
+              sizeFactor: _height,
+              child: ExcludeFocus(
+                excluding: !expanded,
+                child: ExcludeSemantics(
+                  excluding: !expanded,
+                  child: IgnorePointer(
+                    ignoring: !expanded,
+                    child: FadeTransition(
+                      opacity: _fade,
+                      child: Padding(
+                        padding: const EdgeInsets.all(AppSpacing.sm),
+                        child: Column(
+                          children: [
+                            TextFormField(
+                              key: const ValueKey('pack-pretty-title'),
+                              initialValue: title,
+                              decoration: InputDecoration(
+                                labelText: context.t('field.title'),
+                              ),
+                              onChanged: (value) {
+                                if (entry != null) entry.title = value;
+                              },
                             ),
-                        if (entry != null && entry.excludedChartCount > 0)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 8),
-                            child: Align(
+                            const SizedBox(height: 8),
+                            TextFormField(
+                              key: const ValueKey('pack-pretty-composer'),
+                              initialValue: composer,
+                              decoration: InputDecoration(
+                                labelText: context.t('field.composer'),
+                              ),
+                              onChanged: (value) {
+                                if (entry != null) entry.artist = value;
+                              },
+                            ),
+                            const SizedBox(height: 10),
+                            Align(
                               alignment: Alignment.centerLeft,
                               child: Text(
-                                context.t('excludedChartHint'),
+                                identifier,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(color: PrettyColors.warning),
+                                    ?.copyWith(
+                                      color: context.colors.onSurfaceVariant,
+                                    ),
                               ),
                             ),
-                          ),
-                      ],
+                            if (entry != null)
+                              for (
+                                var chartIndex = 0;
+                                chartIndex < entry.charts.length;
+                                chartIndex++
+                              )
+                                _PackChartToggleRow(
+                                  entryIndex: index,
+                                  chartIndex: chartIndex,
+                                  chart: entry.charts[chartIndex],
+                                ),
+                            if (entry != null && entry.excludedChartCount > 0)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    context.t('excludedChartHint'),
+                                    style: Theme.of(context).textTheme.bodySmall
+                                        ?.copyWith(
+                                          color: context.semanticColors.warning,
+                                        ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
                     ),
-                  )
-                : const SizedBox.shrink(),
-          ),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -1333,14 +1250,16 @@ class _PackChartToggleRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     final scheme = Theme.of(context).colorScheme;
-    return Container(
+    return AnimatedContainer(
+      duration: AppMotion.duration(context, AppMotion.control),
+      curve: AppMotion.enter,
       margin: const EdgeInsets.only(top: 8),
       decoration: BoxDecoration(
         color: chart.enabled
-            ? scheme.surfaceContainerHighest.withValues(alpha: 0.32)
-            : scheme.errorContainer.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: PrettyColors.border),
+            ? scheme.surfaceContainerHigh
+            : scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(AppRadius.workspaceInset),
+        border: Border.all(color: context.colors.outlineVariant),
       ),
       child: CheckboxListTile(
         dense: true,
@@ -1411,7 +1330,7 @@ class _PackThumb extends StatelessWidget {
     final path = resource?.path;
     final exists = path != null && File(path).existsSync();
     final child = ClipRRect(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(AppRadius.workspaceInset),
       child: SizedBox(
         width: 64,
         height: 64,
@@ -1434,7 +1353,7 @@ class _PackThumb extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(AppRadius.workspaceInset),
           onTap: () => showResourceDetailOverlay(
             context,
             heroTag: heroTag!,
@@ -2262,19 +2181,25 @@ class _PackImagePreview extends StatelessWidget {
     final file = path == null ? null : File(path);
     final exists = file != null && file.existsSync();
     final theme = Theme.of(context);
-    final preview = Card.filled(
-      color: theme.colorScheme.surfaceContainer,
-      clipBehavior: Clip.antiAlias,
-      child: AspectRatio(
-        aspectRatio: aspectRatio,
-        child: exists
-            ? Image.file(
-                file,
-                fit: fit,
-                errorBuilder: (context, error, stackTrace) =>
-                    _PackImageEmpty(label: label),
-              )
-            : _PackImageEmpty(label: label),
+    final preview = LayoutBuilder(
+      builder: (context, constraints) => ClipRRect(
+        borderRadius: BorderRadius.circular(AppRadius.workspaceControl),
+        child: ColoredBox(
+          color: theme.colorScheme.surfaceContainer,
+          child: SizedBox(
+            width: double.infinity,
+            height: exists
+                ? (constraints.maxWidth / aspectRatio).clamp(128, 288)
+                : 116,
+            child: exists
+                ? Image.file(
+                    file,
+                    fit: fit,
+                    errorBuilder: (_, _, _) => _PackImageEmpty(label: label),
+                  )
+                : _PackImageEmpty(label: label),
+          ),
+        ),
       ),
     );
     if (resource == null || heroTag == null) return preview;
@@ -2283,7 +2208,7 @@ class _PackImagePreview extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(AppRadius.workspaceControl),
           onTap: () => showResourceDetailOverlay(
             context,
             heroTag: heroTag!,
@@ -2362,7 +2287,9 @@ class _PackLevelRow extends StatelessWidget {
                   SizedBox.square(
                     dimension: 76,
                     child: ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(
+                        AppRadius.workspaceInset,
+                      ),
                       child: entry == null
                           ? const MockPreview(label: '', aspectRatio: 1)
                           : _PackImagePreview(

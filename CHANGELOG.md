@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.261126
+
+- UI 更新
+
 ## v1.2.261120fixedbug
 
 - Added Etoile.Lite v0.1.7 to 64-bit Android exports.

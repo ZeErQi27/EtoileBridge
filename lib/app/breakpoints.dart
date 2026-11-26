@@ -7,8 +7,9 @@ class Breakpoints {
   static const double largeMax = 1600;
   static const double contentMaxWidth = 1560;
   static const double readableMaxWidth = 1180;
-  static const double railWidth = 88;
-  static const double railExtendedWidth = 224;
+  static const double railWidth = 76;
+  static const double railExtendedWidth = 208;
+  static const double railExtendedMinWidth = 1320;
 
   static WindowClass classify(double width) {
     if (!width.isFinite || width <= 0) return WindowClass.compact;

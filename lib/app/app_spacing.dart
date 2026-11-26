@@ -21,6 +21,12 @@ class AppRadius {
   static const double xl = 24;
   static const double xxl = 32;
 
+  static const double workspaceCard = 26;
+  static const double workspaceInset = 18;
+  static const double workspaceControl = 14;
+  static const double workspacePressed = 10;
+  static const double workspaceDialog = 30;
+
   static BorderRadius borderRadius(double radius) =>
       BorderRadius.circular(radius);
 }
